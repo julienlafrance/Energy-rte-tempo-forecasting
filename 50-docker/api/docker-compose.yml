@@ -1,0 +1,21 @@
+services:
+  api:
+    image: saraelmountasser/fastapi-mlops:latest
+    container_name: energy-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PG_HOST: projet-db
+      PG_DB: airflow
+      PG_USER: airflow
+      PG_PASS: airflow
+      ES_URL: http://elasticsearch:9200
+      ES_USER: elastic
+      ES_PASS: JqgJDF+TkWd_4kdNtCIq
+    networks:
+      - projet-net
+
+networks:
+  projet-net:
+    external: true
