@@ -2,7 +2,7 @@
   <img src="img/linky.png" alt="Linky" width="180"/>
 </p>
 
-<h1 align="center">⚡ Energy Forecasting</h1>
+<h1 align="center">⚡ Energy Forecasting — Projet 705</h1>
 <p align="center"><em>DATA713 · MLOps · Télécom Paris · 2025-2026</em></p>
 
 <p align="center">
