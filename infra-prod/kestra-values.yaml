@@ -1,0 +1,85 @@
+common:
+  image:
+    image: kestra-prod
+    tag: latest
+    pullPolicy: Never
+  extraVolumeMounts:
+    - name: kestra-storage
+      mountPath: /app/storage
+    - name: scripts
+      mountPath: /app/scripts
+    - name: scripts-mlops
+      mountPath: /app/scripts_mlops
+    - name: dbt-linky
+      mountPath: /app/dbt/linky
+  extraVolumes:
+    - name: kestra-storage
+      hostPath:
+        path: /home/dataia25/projet/50-docker/kestra/data
+        type: DirectoryOrCreate
+    - name: scripts
+      hostPath:
+        path: /home/dataia25/projet/100-scripts
+        type: Directory
+    - name: scripts-mlops
+      hostPath:
+        path: /home/dataia25/projet/100-scripts_mlops
+        type: DirectoryOrCreate
+    - name: dbt-linky
+      hostPath:
+        path: /home/dataia25/projet/60-dbt/linky
+        type: DirectoryOrCreate
+
+configurations:
+  application:
+    kestra:
+      queue:
+        type: postgres
+      repository:
+        type: postgres
+      storage:
+        type: local
+        local:
+          basePath: /app/storage
+      server:
+        basic-auth:
+          enabled: true
+          username: "705@lafrance.io"
+          password: "Proj@705"
+    datasources:
+      postgres:
+        url: jdbc:postgresql://192.168.80.127:5432/airflow?currentSchema=kestra
+        username: airflow
+        password: airflow
+        driverClassName: org.postgresql.Driver
+
+deployments:
+  standalone:
+    enabled: true
+    dind:
+      enabled: false
+
+dind:
+  enabled: false
+
+service:
+  type: NodePort
+  ports:
+    http:
+      port: 8080
+      containerPort: 8080
+      targetPort: http
+      protocol: TCP
+      nodePort: 30082
+    management:
+      port: 8081
+      containerPort: 8081
+      targetPort: management
+      protocol: TCP
+      nodePort: 30083
+
+postgresql:
+  enabled: false
+
+minio:
+  enabled: false

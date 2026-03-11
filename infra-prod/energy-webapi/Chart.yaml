@@ -1,0 +1,5 @@
+apiVersion: v2
+name: energy-webapp
+version: 1.0.0
+description: Streamlit Energy Webapp
+type: application
