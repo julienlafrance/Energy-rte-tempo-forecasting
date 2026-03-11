@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-forecast_linky_705.py - Prévision consommation Linky pour Projet 705
+mlops_forecast_linky_705.py - Prévision consommation Linky pour Projet 705
 
 Source : PostgreSQL dbt_gold.linky_hourly
 Modèle : SARIMA(2,0,0)(2,1,0,24) — paramètres fixés (optimisés via auto_arima IoT)
-Output : PostgreSQL gold.linky_forecast + Elasticsearch index linky-forecast
+Output : PostgreSQL gold.mlops_linky_forecast + Elasticsearch index linky-forecast
 Tracking : MLflow
 
 Usage :
-  uv run forecast_linky_705.py
+  uv run mlops_forecast_linky_705.py
 """
 
 # /// script
@@ -143,10 +143,10 @@ def train_sarima(series):
 
 
 def create_forecast_table(conn):
-    """Crée la table gold.linky_forecast si elle n'existe pas."""
+    """Crée la table gold.mlops_linky_forecast si elle n'existe pas."""
     with conn.cursor() as cur:
         cur.execute("""
-        CREATE TABLE IF NOT EXISTS gold.linky_forecast (
+        CREATE TABLE IF NOT EXISTS gold.mlops_linky_forecast (
             forecast_date TIMESTAMPTZ NOT NULL,
             hour TIMESTAMPTZ NOT NULL,
             conso_kwh_predicted DOUBLE PRECISION NOT NULL,
@@ -160,7 +160,7 @@ def create_forecast_table(conn):
 
 
 def save_to_postgres(conn, forecast_df, model_order_str):
-    """Sauvegarde les prédictions dans gold.linky_forecast."""
+    """Sauvegarde les prédictions dans gold.mlops_linky_forecast."""
     now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     rows = []
     for _, row in forecast_df.iterrows():
@@ -173,10 +173,10 @@ def save_to_postgres(conn, forecast_df, model_order_str):
             model_order_str
         ))
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM gold.linky_forecast WHERE forecast_date = %s", (now,))
+        cur.execute("DELETE FROM gold.mlops_linky_forecast WHERE forecast_date = %s", (now,))
         execute_values(
             cur,
-            """INSERT INTO gold.linky_forecast 
+            """INSERT INTO gold.mlops_linky_forecast 
                (forecast_date, hour, conso_kwh_predicted, conso_kwh_lower, conso_kwh_upper, model_order)
                VALUES %s""",
             rows
@@ -296,7 +296,7 @@ def main():
     print(f"  Conso prédite moyenne: {forecast.mean():.4f} kWh/h")
 
     # --- 5. Sauvegarde PostgreSQL ---
-    print("\n[5/6] Sauvegarde dans gold.linky_forecast...")
+    print("\n[5/6] Sauvegarde dans gold.mlops_linky_forecast...")
     create_forecast_table(conn)
     forecast_date = save_to_postgres(conn, forecast_df, model_order_str)
     print(f"  ✓ {len(forecast_df)} lignes insérées (forecast_date={forecast_date})")
