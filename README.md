@@ -31,7 +31,6 @@ Les données sont stockées dans notre Data Warehouse PostgreSQL orienté time-s
 
 ### Flows Kestra ingestion/transform
 
-- DEV: http://kestra.lafrance.io
 - PRD: http://kestra713.lafrance.io
 - Chaîne de flows: `mqtt_linky_ingest -> mqtt_linky_silver -> mqtt_linky_gold`
 
