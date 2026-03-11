@@ -62,6 +62,13 @@ MODEL_REGISTRY_S3_ENDPOINT_URL = os.environ.get(
 
 ORDER = (2, 0, 0)
 SEASONAL_ORDER = (2, 1, 0, 24)
+SARIMA_CANDIDATES = [
+    ((1, 0, 0), (1, 1, 0, 24)),
+    ((2, 0, 0), (1, 1, 0, 24)),
+    ((2, 0, 0), (2, 1, 0, 24)),
+    ((2, 0, 1), (2, 1, 0, 24)),
+    ((3, 0, 0), (2, 1, 0, 24)),
+]
 HISTORY_DAYS = 21
 N_PERIODS = 72
 
@@ -112,16 +119,65 @@ def cap_outliers(df, col="conso_kwh", factor=3.0):
     return df
 
 
-def train_sarima(series):
-    print(f"  Paramètres: SARIMA{ORDER}x{SEASONAL_ORDER}")
-    model = SARIMAX(
-        series,
-        order=ORDER,
-        seasonal_order=SEASONAL_ORDER,
-        enforce_stationarity=False,
-        enforce_invertibility=False,
-    )
-    return model.fit(disp=True)
+def train_best_sarima(series, candidates):
+    print(f"  {len(candidates)} configurations SARIMA à évaluer")
+    best_model = None
+    best_order = None
+    best_seasonal_order = None
+    best_aic = float("inf")
+    training_results = []
+
+    for idx, (order, seasonal_order) in enumerate(candidates, start=1):
+        model_name = f"SARIMA{order}x{seasonal_order}"
+        print(f"  [{idx}/{len(candidates)}] {model_name}")
+        try:
+            model = SARIMAX(
+                series,
+                order=order,
+                seasonal_order=seasonal_order,
+                enforce_stationarity=False,
+                enforce_invertibility=False,
+            )
+            fitted = model.fit(disp=False)
+            aic = float(fitted.aic)
+            bic = float(fitted.bic)
+            training_results.append(
+                {
+                    "candidate_idx": idx,
+                    "order": order,
+                    "seasonal_order": seasonal_order,
+                    "aic": aic,
+                    "bic": bic,
+                    "status": "success",
+                    "error": "",
+                }
+            )
+            print(f"      AIC={aic:.2f} | BIC={bic:.2f}")
+
+            if aic < best_aic:
+                best_aic = aic
+                best_model = fitted
+                best_order = order
+                best_seasonal_order = seasonal_order
+        except Exception as exc:
+            training_results.append(
+                {
+                    "candidate_idx": idx,
+                    "order": order,
+                    "seasonal_order": seasonal_order,
+                    "aic": float("nan"),
+                    "bic": float("nan"),
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
+            print(f"      ⚠ Échec entraînement {model_name}: {exc}")
+
+    if best_model is None:
+        raise RuntimeError("Aucun modèle SARIMA n'a pu être entraîné correctement")
+
+    print(f"  ✓ Meilleur modèle: SARIMA{best_order}x{best_seasonal_order} (AIC={best_aic:.2f})")
+    return best_model, best_order, best_seasonal_order, training_results
 
 
 def register_model_to_s3(model, model_order_str, train_date):
@@ -177,8 +233,8 @@ def main():
     print(f"  ✓ Points utilisés: {len(series)}")
 
     print("\n[3/4] Entraînement modèle...")
-    model = train_sarima(series)
-    model_order_str = f"SARIMA{ORDER}x{SEASONAL_ORDER}"
+    model, best_order, best_seasonal_order, training_results = train_best_sarima(series, SARIMA_CANDIDATES)
+    model_order_str = f"SARIMA{best_order}x{best_seasonal_order}"
     train_date = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     print(f"  ✓ Modèle: {model_order_str}")
     print(f"  AIC: {model.aic:.2f}")
@@ -194,8 +250,12 @@ def main():
         mlflow.set_tag("phase", "train")
         mlflow.log_params(
             {
-                "order": str(ORDER),
-                "seasonal_order": str(SEASONAL_ORDER),
+                "order": str(best_order),
+                "seasonal_order": str(best_seasonal_order),
+                "sarima_candidates_count": len(SARIMA_CANDIDATES),
+                "best_model_order": str(best_order),
+                "best_model_seasonal_order": str(best_seasonal_order),
+                "best_model_name": model_order_str,
                 "history_days": HISTORY_DAYS,
                 "n_periods": N_PERIODS,
                 "n_points": len(series),
@@ -204,6 +264,17 @@ def main():
                 "model_registry_s3_prefix": MODEL_REGISTRY_S3_PREFIX,
             }
         )
+
+        for result in training_results:
+            idx = result["candidate_idx"]
+            mlflow.log_param(f"candidate_{idx}_order", str(result["order"]))
+            mlflow.log_param(f"candidate_{idx}_seasonal_order", str(result["seasonal_order"]))
+            mlflow.log_param(f"candidate_{idx}_status", result["status"])
+            if result["error"]:
+                mlflow.log_param(f"candidate_{idx}_error", result["error"][:240])
+            mlflow.log_metric(f"candidate_{idx}_aic", float(result["aic"]))
+            mlflow.log_metric(f"candidate_{idx}_bic", float(result["bic"]))
+
         mlflow.log_metrics(
             {
                 "aic": model.aic,

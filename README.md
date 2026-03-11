@@ -55,8 +55,23 @@ Pour chaque utilisation, le modèle est récupéré directement depuis S3.
 ## MLflow — performance & drift
 
 - Lien MLflow: http://192.168.80.212:8050/#/experiments
+- Entraînement: compétition de plusieurs **candidats SARIMA** à chaque run
+- Sélection du meilleur modèle: **AIC minimal** parmi les candidats entraînés avec succès
 - Évaluation à chaque exécution sur la dernière prévision complète: **72h prédites vs 72h réelles**
 - Métriques suivies: `MAE`, `MSE`, `RMSE`, `MAPE`, `Coverage 80%`
+
+### Tracking training multi-SARIMA
+
+À chaque exécution d'entraînement:
+
+- Tous les candidats sont tracés dans MLflow (succès **et** échec)
+- Pour chaque candidat: `order`, `seasonal_order`, `status`, `candidate_X_aic`, `candidate_X_bic`
+- En cas d'échec: `status=failed`, message `candidate_X_error`, et `AIC/BIC = NaN`
+- Le meilleur est tracé explicitement: `best_model_order`, `best_model_seasonal_order`, `best_model_name`
+- Ce meilleur modèle est ensuite:
+  - loggé en artifact MLflow (`statsmodels`)
+  - enregistré dans le **MLflow Model Registry** (si activé)
+  - exporté dans le S3 Garage (si activé)
 
 ### Data Drift (entrées)
 
