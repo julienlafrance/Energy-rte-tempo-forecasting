@@ -99,9 +99,20 @@ Réponse JSON (horaire) :
 
 ## CI / CD / CT
 
-- **Continuous Integration**: GitHub Actions vérifie la qualité des flows
-- **Continuous Development**: push sur `prod` -> déploiement automatique des flows sur la VM
-- **Continuous Training**: ré-entraînement hebdomadaire avec nouvelles données glissantes
+| Pipeline | Déclencheur | Action |
+|----------|-------------|--------|
+| **CI** | Push / PR sur `main` | Validation YAML des flows + tests pytest |
+| **CD** | Push sur `prod` ou dispatch manuel | Déploiement des flows sur la VM via Kestra API |
+| **CT** | Hebdomadaire (cron Kestra) | Ré-entraînement SARIMA sur nouvelles données |
+
+| Workflow | Fichier |
+|----------|---------|
+| Validation | `.github/workflows/validate.yml` |
+| Déploiement | `.github/workflows/deploy.yml` |
+
+Le CD s'exécute sur un **runner self-hosted** installé sur la VM de production.
+
+> 📖 Documentation détaillée : [`170-docs/ci_cd.md`](170-docs/ci_cd.md)
 
 ---
 
