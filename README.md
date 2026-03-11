@@ -162,6 +162,8 @@ Les hooks pre-commit reproduisent les mêmes checks que la CI (validation flows,
 - S3 séparé: `s3fast.lafrance.io`
 - IP: `192.168.80.127`
 
+> Pour plus de détails, voir [`170-docs/infra_prod.md`](170-docs/infra_prod.md)
+
 ---
 
 ## Structure du dépôt
