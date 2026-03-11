@@ -1,0 +1,46 @@
+id: mqtt_linky_silver
+namespace: projet705
+tasks:
+  - id: insert_bronze
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    sql: |
+      INSERT INTO raw.linky (metric, value)
+      VALUES (
+        '{{ trigger.topic | replace({"linky/sensor/lixee_zlinky_tic_": "", "/state": ""}) }}',
+        {{ trigger.payload }}
+      )
+  - id: downstream
+    type: io.kestra.plugin.core.flow.Parallel
+    tasks:
+      - id: call_silver
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: projet705
+        flowId: mqtt_linky_silver
+        inputs:
+          metric: "{{ trigger.topic | replace({\"linky/sensor/lixee_zlinky_tic_\": \"\", \"/state\": \"\"}) }}"
+          payload: "{{ trigger.payload }}"
+        wait: false
+      - id: call_realtime
+        type: io.kestra.plugin.core.flow.Subflow
+        namespace: projet705
+        flowId: elastic_linky_realtime
+        inputs:
+          value: "{{ trigger.payload }}"
+          metric: "{{ trigger.topic | replace({\"linky/sensor/lixee_zlinky_tic_\": \"\", \"/state\": \"\"}) }}"
+        wait: false
+triggers:
+  - id: linky_trigger
+    type: io.kestra.plugin.mqtt.RealtimeTrigger
+    server: tcp://172.18.0.1:1884
+    clientId: kestra-linky-ingest
+    username: dataia25
+    password: proj@705
+    topic:
+      - linky/sensor/+/state
+    serdeType: STRING
+pluginDefaults:
+  - type: io.kestra.plugin.jdbc.postgresql.Query
+    values:
+      url: "{{ kv('PG_JDBC') }}"
+      password: "{{ kv('PG_PASS') }}"
+      username: "{{ kv('PG_USER') }}"
