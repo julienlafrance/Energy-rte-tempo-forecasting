@@ -7,7 +7,6 @@ Modèle : SARIMA(2,0,0)(2,1,0,24) — paramètres fixés (optimisés via auto_ar
 Output : PostgreSQL gold.mlops_linky_forecast
 Tracking : MLflow
 Registry : S3 (optionnel) + MLflow Model Registry (optionnel)
-(Elasticsearch supprimé)
 
 Usage :
   uv run mlops_forecast_linky_705.py
