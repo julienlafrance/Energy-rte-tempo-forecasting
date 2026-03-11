@@ -15,9 +15,9 @@ services:
         - ./data:/app/storage
         - ./tmp:/tmp/kestra-wd
         - /var/run/docker.sock:/var/run/docker.sock
-        - ${HOST_DBT_PATH}:/opt/projet705/dbt
-        - ${HOST_SCRIPTS_PATH}:/opt/projet705/scripts
-        - ${HOST_SQL_PATH}:/opt/projet705/sql
+        - ${HOST_DBT_PATH}:/app/dbt
+        - ${HOST_SCRIPTS_PATH}:/app/scripts
+        - ${HOST_SQL_PATH}:/app/sql
     environment:
       KESTRA_CONFIGURATION: |
         datasources:

@@ -11,7 +11,7 @@ tasks:
       type: io.kestra.plugin.core.runner.Process
     script: |
       set -euo pipefail
-      cd /opt/projet705/dbt
+      cd /app/dbt
       dbt run --profiles-dir . --select linky_hourly
 
 triggers:

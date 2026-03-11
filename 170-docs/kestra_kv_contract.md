@@ -84,3 +84,12 @@ curl -X PUT "http://kestra:8080/api/v1/namespaces/projet705/kv/PG_HOST" \
 ```
 
 Or use the Kestra UI: **Namespaces → projet705 → KV Store**.
+
+---
+---
+
+- POST /api/v1/{tenant}/flows → create one flow
+- PUT /api/v1/{tenant}/flows/{namespace}/{id} → update one flow
+- DELETE /api/v1/{tenant}/flows/{namespace}/{id} → delete one flow
+- PUT /api/v1/{tenant}/flows/{namespace} → update a complete namespace from YAML source
+- POST /api/v1/{tenant}/flows/bulk → bulk create/update flows

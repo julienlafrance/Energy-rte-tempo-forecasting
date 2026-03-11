@@ -20,7 +20,7 @@ tasks:
       MLFLOW_S3_ENDPOINT_URL: "{{ kv('MLFLOW_S3_ENDPOINT_URL') }}"
     script: |
       set -euo pipefail
-      cd /opt/projet705/scripts
+      cd /app/scripts_mlops
       python3 forecast_linky_705.py
 
 triggers:
