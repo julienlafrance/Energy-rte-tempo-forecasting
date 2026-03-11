@@ -51,6 +51,7 @@ PG_PASS = os.environ["PG_PASS"]
 
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://127.0.0.1:8050")
 MLFLOW_EXPERIMENT = "mlops_linky_sarima_705"
+MLFLOW_RUN_NAME_PREFIX = os.environ.get("MLFLOW_RUN_NAME_PREFIX", "training_linky_sarima_705")
 MLFLOW_REGISTERED_MODEL_NAME = os.environ.get("MLFLOW_REGISTERED_MODEL_NAME", "linky_sarima_705")
 
 MODEL_REGISTRY_S3_BUCKET = os.environ.get("MODEL_REGISTRY_S3_BUCKET", "705")
@@ -246,8 +247,10 @@ def main():
 
     s3_model_uri = register_model_to_s3(model, model_order_str, train_date)
 
-    with mlflow.start_run():
+    run_name = f"{MLFLOW_RUN_NAME_PREFIX}_{train_date.strftime('%Y%m%d%H')}"
+    with mlflow.start_run(run_name=run_name):
         mlflow.set_tag("phase", "train")
+        mlflow.log_param("run_name", run_name)
         mlflow.log_params(
             {
                 "order": str(best_order),
