@@ -1,0 +1,30 @@
+name: deploy-prod
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy flows to production
+    runs-on: [self-hosted]
+
+    env:
+      KESTRA_URL: http://localhost:8082
+      KESTRA_ADMIN_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+      KESTRA_ADMIN_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print deployment context
+        run: |
+          echo "Branch:   $GITHUB_REF_NAME"
+          echo "Commit:   $GITHUB_SHA"
+          echo "Runner:   $(hostname)"
+          echo "Trigger:  $GITHUB_EVENT_NAME"
+
+      - name: Deploy Kestra flows
+        run: bash 100-scripts_mlops/deploy/deploy_flows.sh
