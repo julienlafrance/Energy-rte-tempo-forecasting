@@ -1,29 +1,29 @@
-# Continuous Deployment — Kestra Flows
+# Déploiement continu — Flows Kestra
 
-## Triggers
+## Déclencheurs
 
-Deployment runs in two cases:
+Le déploiement s'exécute dans deux cas :
 
-- **Push to `prod`** — automatic deployment on every merge/push to the production branch.
-- **Manual dispatch** — triggered via the GitHub Actions UI (`workflow_dispatch`).
+- **Push sur `prod`** — déploiement automatique à chaque merge/push sur la branche de production.
+- **Dispatch manuel** — déclenché via l'interface GitHub Actions (`workflow_dispatch`).
 
-Deployment is **not** triggered on `main`.
+Le déploiement n'est **pas** déclenché sur `main`.
 
 ## Runner
 
-The workflow executes on a **self-hosted GitHub Actions runner** installed on the production VM. Kestra is accessible locally at `http://localhost:8082`.
+Le workflow s'exécute sur un **runner GitHub Actions self-hosted** installé sur la VM de production. Kestra est accessible localement à `http://localhost:8082`.
 
-## What it does
+## Fonctionnement
 
-1. Checks out the repository.
-2. Logs branch, commit SHA, and runner hostname for traceability.
-3. Runs `100-scripts_mlops/deploy/deploy_flows.sh`, which validates and updates Kestra flows via the API.
+1. Clone le dépôt.
+2. Logge la branche, le SHA du commit et le hostname du runner pour traçabilité.
+3. Exécute `100-scripts_mlops/deploy/deploy_flows.sh`, qui valide puis met à jour les flows Kestra via l'API.
 
 ## Secrets
 
-The following repository secrets must be configured in GitHub:
+Les secrets suivants doivent être configurés dans le dépôt GitHub :
 
-| Secret               | Description                  |
-|----------------------|------------------------------|
-| `KESTRA_ADMIN_USER`  | Kestra API admin username    |
-| `KESTRA_ADMIN_PASS`  | Kestra API admin password    |
+| Secret               | Description                        |
+|----------------------|------------------------------------|
+| `KESTRA_ADMIN_USER`  | Nom d'utilisateur admin Kestra     |
+| `KESTRA_ADMIN_PASS`  | Mot de passe admin Kestra          |

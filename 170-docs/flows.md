@@ -1,118 +1,118 @@
-# Kestra Flows — Documentation
+# Flows Kestra — Documentation
 
-All flows run under the namespace `projet705`.
+Tous les flows s'exécutent sous le namespace `projet705`.
 
 ---
 
-## Data pipeline
+## Pipeline de données
 
 ### `mqtt_linky_ingest`
 
-**Trigger:** MQTT realtime — `linky/sensor/+/state`
+**Déclencheur :** MQTT temps réel — `linky/sensor/+/state`
 
-Entry point of the data pipeline. Listens to the MQTT broker for Linky sensor readings published by Home Assistant.
+Point d'entrée du pipeline de données. Écoute le broker MQTT pour les relevés du capteur Linky publiés par Home Assistant.
 
-On each message:
+À chaque message :
 
-1. **insert_bronze** — inserts the raw metric and value into `raw.linky` (Bronze layer)
-2. **downstream** (parallel):
-   - calls `mqtt_linky_silver` to process the data into Silver
-   - calls `elastic_linky_realtime` to index the data in Elasticsearch for real-time dashboards
+1. **insert_bronze** — insère la métrique brute et sa valeur dans `raw.linky` (couche Bronze)
+2. **downstream** (parallèle) :
+   - appelle `mqtt_linky_silver` pour traiter les données en Silver
+   - appelle `elastic_linky_realtime` pour indexer les données dans Elasticsearch (tableaux de bord temps réel)
 
-The MQTT topic is parsed to extract the metric name by stripping the `linky/sensor/lixee_zlinky_tic_` prefix and `/state` suffix.
+Le topic MQTT est parsé pour extraire le nom de la métrique en supprimant le préfixe `linky/sensor/lixee_zlinky_tic_` et le suffixe `/state`.
 
-PostgreSQL credentials are loaded from Kestra KV store (`PG_JDBC`, `PG_USER`, `PG_PASS`).
+Les identifiants PostgreSQL sont chargés depuis le KV store Kestra (`PG_JDBC`, `PG_USER`, `PG_PASS`).
 
 ---
 
 ### `mqtt_linky_silver`
 
-**Trigger:** MQTT realtime — `linky/sensor/+/state`
+**Déclencheur :** MQTT temps réel — `linky/sensor/+/state`
 
-Mirrors the ingest flow structure. Inserts cleaned data into `raw.linky` (Silver layer) and fans out to the same downstream subflows.
+Reprend la même structure que le flow d'ingestion. Insère les données nettoyées dans `raw.linky` (couche Silver) et distribue vers les mêmes sous-flows en aval.
 
-PostgreSQL credentials are loaded from Kestra KV store.
+Les identifiants PostgreSQL sont chargés depuis le KV store Kestra.
 
 ---
 
 ### `mqtt_linky_gold`
 
-**Trigger:** Schedule — `5 * * * *` (every hour at minute 5)
+**Déclencheur :** Planifié — `5 * * * *` (toutes les heures à la 5ᵉ minute)
 
-Aggregates Silver data into the Gold layer using **dbt**:
+Agrège les données Silver dans la couche Gold via **dbt** :
 
-1. Runs `dbt run --select linky_hourly` inside the Kestra runner
-2. Produces hourly consumption data in `dbt_gold.linky_hourly`
+1. Exécute `dbt run --select linky_hourly` dans le runner Kestra
+2. Produit les données de consommation horaire dans `dbt_gold.linky_hourly`
 
-This table is the source for both ML training and inference.
+Cette table est la source pour l'entraînement et l'inférence ML.
 
 ---
 
-## ML pipeline
+## Pipeline ML
 
 ### `mlops_train_forecast`
 
-**Trigger:** Schedule — `0 0 * * 0` (weekly, Sunday midnight)
+**Déclencheur :** Planifié — `0 0 * * 0` (hebdomadaire, dimanche à minuit)
 
-**Script:** `100-scripts_mlops/mlops_train_linky_705.py`
+**Script :** `100-scripts_mlops/mlops_train_linky_705.py`
 
-Trains a SARIMA(2,0,0)(2,1,0,24) model on the last 21 days of hourly consumption data.
+Entraîne un modèle SARIMA(2,0,0)(2,1,0,24) sur les 21 derniers jours de consommation horaire.
 
-Steps:
+Étapes :
 
-1. Fetches data from `dbt_gold.linky_hourly`
-2. Interpolates missing hours, caps outliers (IQR × 3)
-3. Fits the SARIMA model
-4. Saves the model artifact to **S3 Garage** (`s3://705/mlops/linky-sarima-705/<YYYYMMDDHH>/model.pkl`)
-5. Logs parameters and metrics to **MLflow** (AIC, BIC, mean/std consumption)
-6. Registers the model in **MLflow Registry** (`mlops_linky_sarima_705`)
+1. Récupère les données depuis `dbt_gold.linky_hourly`
+2. Interpole les heures manquantes, écrête les valeurs aberrantes (IQR × 3)
+3. Ajuste le modèle SARIMA
+4. Sauvegarde l'artefact modèle dans **S3 Garage** (`s3://705/mlops/linky-sarima-705/<YYYYMMDDHH>/model.pkl`)
+5. Enregistre les paramètres et métriques dans **MLflow** (AIC, BIC, moyenne/écart-type de consommation)
+6. Enregistre le modèle dans le **MLflow Registry** (`mlops_linky_sarima_705`)
 
-On success: Discord notification.
-On failure: Discord notification with error details.
+En cas de succès : notification Discord.
+En cas d'échec : notification Discord avec le détail de l'erreur.
 
-| KV Variable | Usage |
+| Variable KV | Usage |
 |-------------|-------|
-| `PG_HOST`, `PG_DB`, `PG_USER`, `PG_PASS` | PostgreSQL connection |
-| `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_BUCKET`, `S3_ENDPOINT` | S3 model storage |
+| `PG_HOST`, `PG_DB`, `PG_USER`, `PG_PASS` | Connexion PostgreSQL |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`, `S3_BUCKET`, `S3_ENDPOINT` | Stockage S3 du modèle |
 | `DISCORD_WEBHOOK_URL` | Notifications |
 
 ---
 
 ### `mlops_linky_forecast_3d`
 
-**Trigger:** Schedule — `0 */6 * * *` (every 6 hours)
+**Déclencheur :** Planifié — `0 */6 * * *` (toutes les 6 heures)
 
-**Script:** `100-scripts_mlops/mlops_forecast_linky_705.py`
+**Script :** `100-scripts_mlops/mlops_forecast_linky_705.py`
 
-Generates a 72-hour consumption forecast using the latest trained SARIMA model.
+Génère une prévision de consommation sur 72 heures à partir du dernier modèle SARIMA entraîné.
 
-Steps:
+Étapes :
 
-1. **Evaluate previous forecast** — compares the last completed forecast against actual consumption and stores MAE, MSE, RMSE, MAPE, and 80% interval coverage in `gold.mlops_linky_performance`
-2. **Fetch recent data** — loads the last 21 days from `dbt_gold.linky_hourly`, interpolates gaps, caps outliers
-3. **Data drift detection** — Kolmogorov-Smirnov test comparing the current 21-day window against the previous 21-day window; result stored in `gold.mlops_linky_drift`
-4. **Load model** — retrieves the latest model from MLflow Registry (falls back to the latest training run)
-5. **Forecast** — applies the trained SARIMA parameters to generate 72 hours of predictions with 80% confidence intervals
-6. **Save** — inserts predictions into `gold.mlops_linky_forecast` (upsert by hour)
-7. **MLflow tracking** — logs forecast metadata, performance metrics, and drift indicators
+1. **Évaluation de la prévision précédente** — compare la dernière prévision complète aux consommations réelles et stocke MAE, MSE, RMSE, MAPE et couverture 80 % dans `gold.mlops_linky_performance`
+2. **Récupération des données récentes** — charge les 21 derniers jours depuis `dbt_gold.linky_hourly`, interpole les trous, écrête les valeurs aberrantes
+3. **Détection de dérive des données** — test de Kolmogorov-Smirnov comparant la fenêtre actuelle de 21 jours à la précédente ; résultat stocké dans `gold.mlops_linky_drift`
+4. **Chargement du modèle** — récupère le dernier modèle depuis le MLflow Registry (repli sur le dernier run d'entraînement)
+5. **Prévision** — applique les paramètres SARIMA entraînés pour générer 72 heures de prédictions avec intervalles de confiance à 80 %
+6. **Sauvegarde** — insère les prédictions dans `gold.mlops_linky_forecast` (upsert par heure)
+7. **Tracking MLflow** — enregistre les métadonnées de prévision, métriques de performance et indicateurs de dérive
 
-On success: Discord notification.
-On failure: Discord notification with error details.
+En cas de succès : notification Discord.
+En cas d'échec : notification Discord avec le détail de l'erreur.
 
-| PostgreSQL Table | Content |
+| Table PostgreSQL | Contenu |
 |-----------------|---------|
-| `gold.mlops_linky_forecast` | Hourly predictions with confidence intervals |
-| `gold.mlops_linky_performance` | Rolling performance metrics per forecast |
-| `gold.mlops_linky_drift` | Data drift detection results |
+| `gold.mlops_linky_forecast` | Prédictions horaires avec intervalles de confiance |
+| `gold.mlops_linky_performance` | Métriques de performance glissantes par prévision |
+| `gold.mlops_linky_drift` | Résultats de détection de dérive des données |
 
-Uses the same KV variables as the training flow.
+Utilise les mêmes variables KV que le flow d'entraînement.
 
 ---
 
-## Flow dependency graph
+## Graphe de dépendances des flows
 
 ```
-                    MQTT broker
+                    Broker MQTT
                         │
             ┌───────────┴───────────┐
             ▼                       ▼
@@ -123,14 +123,14 @@ Uses the same KV variables as the training flow.
                                     │
                         ┌───────────┘
                         ▼
-                 mqtt_linky_gold          (hourly cron)
+                 mqtt_linky_gold          (cron horaire)
                         │
                         ▼
               dbt_gold.linky_hourly
                    ┌────┴────┐
                    ▼         ▼
   mlops_train_forecast    mlops_linky_forecast_3d
-     (weekly)                (every 6h)
+     (hebdomadaire)          (toutes les 6h)
          │                       │
          ▼                       ▼
    MLflow + S3             PostgreSQL + MLflow
@@ -138,20 +138,20 @@ Uses the same KV variables as the training flow.
 
 ---
 
-## KV store variables
+## Variables du KV store
 
-All secrets and connection strings are stored in the Kestra KV store — no hardcoded credentials in flows.
+Tous les secrets et chaînes de connexion sont stockés dans le KV store Kestra — aucun identifiant en dur dans les flows.
 
-| Key | Description |
+| Clé | Description |
 |-----|-------------|
-| `PG_HOST` | PostgreSQL host |
-| `PG_DB` | PostgreSQL database |
-| `PG_USER` | PostgreSQL username |
-| `PG_PASS` | PostgreSQL password |
-| `PG_JDBC` | JDBC connection string (used by plugin defaults) |
-| `S3_ACCESS_KEY` | S3 access key |
-| `S3_SECRET_KEY` | S3 secret key |
-| `S3_REGION` | S3 region |
-| `S3_BUCKET` | S3 bucket name |
-| `S3_ENDPOINT` | S3 endpoint URL |
-| `DISCORD_WEBHOOK_URL` | Discord webhook for notifications |
+| `PG_HOST` | Hôte PostgreSQL |
+| `PG_DB` | Base de données PostgreSQL |
+| `PG_USER` | Nom d'utilisateur PostgreSQL |
+| `PG_PASS` | Mot de passe PostgreSQL |
+| `PG_JDBC` | Chaîne de connexion JDBC (utilisée par les plugin defaults) |
+| `S3_ACCESS_KEY` | Clé d'accès S3 |
+| `S3_SECRET_KEY` | Clé secrète S3 |
+| `S3_REGION` | Région S3 |
+| `S3_BUCKET` | Nom du bucket S3 |
+| `S3_ENDPOINT` | URL de l'endpoint S3 |
+| `DISCORD_WEBHOOK_URL` | Webhook Discord pour les notifications |

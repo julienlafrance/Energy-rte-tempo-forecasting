@@ -1,111 +1,111 @@
-# CI/CD Pipeline
+# Pipeline CI/CD
 
-## Overview
+## Vue d'ensemble
 
-This project uses GitHub Actions for continuous integration and continuous deployment.
+Ce projet utilise GitHub Actions pour l'intégration continue et le déploiement continu.
 
-| Stage | Workflow | Trigger | Runner |
-|-------|----------|---------|--------|
-| CI    | `.github/workflows/validate.yml` | push / PR to `main` | `ubuntu-latest` |
-| CD    | `.github/workflows/deploy.yml`   | push to `prod` / manual | `self-hosted` (production VM) |
+| Étape | Workflow | Déclencheur | Runner |
+|-------|----------|-------------|--------|
+| CI    | `.github/workflows/validate.yml` | push / PR sur `main` | `ubuntu-latest` |
+| CD    | `.github/workflows/deploy.yml`   | push sur `prod` / manuel | `self-hosted` (VM de production) |
 
 ---
 
 ## CI — Validation (`validate.yml`)
 
-Runs on every push and pull request targeting `main`.
+S'exécute à chaque push et pull request ciblant `main`.
 
-Steps:
+Étapes :
 
-1. Check out the repository
-2. Install Python 3.12 via `uv`
-3. Install CI dependencies (`uv sync --extra ci`)
-4. Validate Kestra flow files using `check_flows.py`
-5. Run the test suite with `pytest`
+1. Checkout du dépôt
+2. Installation de Python 3.12 via `uv`
+3. Installation des dépendances CI (`uv sync --extra ci`)
+4. Validation des fichiers de flows Kestra via `check_flows.py`
+5. Exécution de la suite de tests avec `pytest`
 
-The CI pipeline ensures that:
+Le pipeline CI garantit que :
 
-- all flow YAML files parse correctly
-- required fields (`id`, `namespace`, `tasks`) are present
-- no duplicate flow IDs exist
-- no hardcoded credentials appear in flow definitions
-- all Python tests pass
+- tous les fichiers YAML de flows sont correctement parsés
+- les champs requis (`id`, `namespace`, `tasks`) sont présents
+- aucun ID de flow n'est dupliqué
+- aucun identifiant en dur n'apparaît dans les définitions de flows
+- tous les tests Python passent
 
-This must succeed before merging into `main`.
+Cette étape doit réussir avant toute fusion dans `main`.
 
 ---
 
-## CD — Deployment (`deploy.yml`)
+## CD — Déploiement (`deploy.yml`)
 
-### Triggers
+### Déclencheurs
 
-- **Push to `prod`** — automatic deployment on every merge or push.
-- **Manual dispatch** — triggered via the GitHub Actions UI (`workflow_dispatch`).
+- **Push sur `prod`** — déploiement automatique à chaque merge ou push.
+- **Dispatch manuel** — déclenché via l'interface GitHub Actions (`workflow_dispatch`).
 
-Deployment is **not** triggered on `main`.
+Le déploiement n'est **pas** déclenché sur `main`.
 
 ### Runner
 
-The workflow runs on a **self-hosted GitHub Actions runner** installed on the production VM. This allows the workflow to call the Kestra API at `localhost` without exposing it to the internet.
+Le workflow s'exécute sur un **runner GitHub Actions self-hosted** installé sur la VM de production. Cela permet au workflow d'appeler l'API Kestra en `localhost` sans l'exposer sur Internet.
 
-### Deployment sequence
+### Séquence de déploiement
 
-1. GitHub detects a push to `prod` (or a manual trigger)
-2. The `deploy` job starts on the self-hosted runner
-3. The repository is checked out (`actions/checkout@v4`)
-4. Branch, commit, and hostname are logged for traceability
-5. `100-scripts_mlops/deploy/deploy_flows.sh` is executed
-6. The script validates each flow via the Kestra API, then updates it
+1. GitHub détecte un push sur `prod` (ou un déclenchement manuel)
+2. Le job `deploy` démarre sur le runner self-hosted
+3. Le dépôt est cloné (`actions/checkout@v4`)
+4. La branche, le commit et le hostname sont loggés pour traçabilité
+5. `100-scripts_mlops/deploy/deploy_flows.sh` est exécuté
+6. Le script valide chaque flow via l'API Kestra, puis le met à jour
 
-If any step fails, the workflow stops immediately.
+Si une étape échoue, le workflow s'arrête immédiatement.
 
 ---
 
-## Deployment script (`deploy_flows.sh`)
+## Script de déploiement (`deploy_flows.sh`)
 
-Located at `100-scripts_mlops/deploy/deploy_flows.sh`.
+Situé dans `100-scripts_mlops/deploy/deploy_flows.sh`.
 
-The script iterates over all `.yaml` / `.yml` files in the flow directory and, for each flow:
+Le script itère sur tous les fichiers `.yaml` / `.yml` du répertoire de flows et, pour chaque flow :
 
-1. **Validates** the flow via `POST /api/v1/main/flows/validate`
-2. **Deploys** the flow via `PUT /api/v1/main/flows/{namespace}/{id}`
+1. **Valide** le flow via `POST /api/v1/main/flows/validate`
+2. **Déploie** le flow via `PUT /api/v1/main/flows/{namespace}/{id}`
 
-### Environment variables
+### Variables d'environnement
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `KESTRA_URL` | Base URL of the Kestra API | `http://localhost:8082` |
-| `FLOW_DIR` | Directory containing flow YAML files | `10-flows` |
-| `KESTRA_ADMIN_USER` | Kestra API username | _(required)_ |
-| `KESTRA_ADMIN_PASS` | Kestra API password | _(required)_ |
+| Variable | Description | Défaut |
+|----------|-------------|--------|
+| `KESTRA_URL` | URL de base de l'API Kestra | `http://localhost:8082` |
+| `FLOW_DIR` | Répertoire contenant les fichiers YAML des flows | `10-flows` |
+| `KESTRA_ADMIN_USER` | Nom d'utilisateur de l'API Kestra | _(requis)_ |
+| `KESTRA_ADMIN_PASS` | Mot de passe de l'API Kestra | _(requis)_ |
 
-Credentials are provided via GitHub repository secrets — they are never hardcoded.
+Les identifiants sont fournis via les secrets du dépôt GitHub — ils ne sont jamais codés en dur.
 
-The script uses `set -euo pipefail` so any error (failed validation, network issue, bad response) causes an immediate failure.
+Le script utilise `set -euo pipefail` : toute erreur (validation échouée, problème réseau, mauvaise réponse) provoque un arrêt immédiat.
 
 ---
 
 ## Secrets
 
-The following secrets must be configured in the GitHub repository settings:
+Les secrets suivants doivent être configurés dans les paramètres du dépôt GitHub :
 
-| Secret | Used by |
-|--------|---------|
+| Secret | Utilisé par |
+|--------|-------------|
 | `KESTRA_ADMIN_USER` | `deploy.yml` → `deploy_flows.sh` |
 | `KESTRA_ADMIN_PASS` | `deploy.yml` → `deploy_flows.sh` |
 
 ---
 
-## Development workflow
+## Workflow de développement
 
 ```
-feature branch ──► PR to main ──► CI validates ──► merge to main ──► merge main → prod ──► CD deploys
+branche feature ──► PR vers main ──► CI valide ──► merge dans main ──► merge main → prod ──► CD déploie
 ```
 
-1. Create a feature branch from `main`
-2. Develop and test locally (`pytest 130-tests/ -v`)
-3. Open a pull request to `main`
-4. CI runs validation — all checks must pass
-5. Merge to `main`
-6. When ready for production, merge `main` into `prod`
-7. CD automatically deploys the updated flows to the production Kestra instance
+1. Créer une branche feature depuis `main`
+2. Développer et tester en local (`pytest 130-tests/ -v`)
+3. Ouvrir une pull request vers `main`
+4. La CI exécute la validation — tous les checks doivent passer
+5. Merge dans `main`
+6. Quand prêt pour la production, merge de `main` dans `prod`
+7. Le CD déploie automatiquement les flows mis à jour sur l'instance Kestra de production
