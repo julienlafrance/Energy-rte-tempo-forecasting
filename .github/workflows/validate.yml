@@ -25,7 +25,7 @@ jobs:
         run: uv sync --extra ci
 
       - name: Check Kestra flows
-        run: uv run python 100-scripts_mlops/ci/check_flows.py 150-flows
+        run: uv run python 100-scripts_mlops/ci/check_flows.py
 
       - name: Run tests
         run: uv run pytest 130-tests/ -v

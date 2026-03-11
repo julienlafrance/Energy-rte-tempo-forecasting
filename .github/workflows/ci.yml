@@ -19,13 +19,13 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.10
 
       - name: Install CI dependencies
         run: uv sync --extra ci
 
       - name: Check Kestra flows
-        run: uv run python 100-scripts_mlops/ci/check_flows.py 150-flows
+        run: uv run python 100-scripts_mlops/ci/check_flows.py
 
       - name: Run tests
         run: uv run pytest 130-tests/ -v

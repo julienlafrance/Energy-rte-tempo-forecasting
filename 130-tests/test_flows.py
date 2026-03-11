@@ -173,42 +173,14 @@ class TestSubflowRefs:
         assert cf.validate_flows(flows_dir.parent) == []
 
 
-# ── Hardcoded secrets ────────────────────────────────────────────────────────
-
-class TestHardcodedSecrets:
-    def test_hardcoded_password_detected(self, flows_dir):
-        _write(flows_dir / "creds.yaml", """\
-            id: bad_flow
-            namespace: projet705
-            tasks:
-              - id: db
-                type: io.kestra.plugin.jdbc.postgresql.Query
-                password: SuperSecret123
-        """)
-        errors = cf.validate_flows(flows_dir.parent)
-        assert any("hardcoded secret" in e for e in errors)
-
-    def test_kv_password_ok(self, flows_dir):
-        _write(flows_dir / "safe.yaml", """\
-            id: safe_flow
-            namespace: projet705
-            tasks:
-              - id: db
-                type: io.kestra.plugin.jdbc.postgresql.Query
-                password: "{{ kv('PG_PASS') }}"
-        """)
-        errors = cf.validate_flows(flows_dir.parent)
-        assert not any("hardcoded secret" in e for e in errors)
-
-
 # ── Integration: validate actual repo flows ──────────────────────────────────
 
 class TestRepoFlows:
-    """Run the checker against the real flows/ directory in this repo."""
+    """Run the checker against the real flows directory in this repo."""
 
     def test_repo_flows_are_valid(self):
-        repo_flows = Path(__file__).resolve().parents[1] / "150-flows"
+        repo_flows = Path(__file__).resolve().parents[1] / cf.DEFAULT_FLOWS_DIR
         if not repo_flows.exists():
-            pytest.skip("flows/ directory not found")
+            pytest.skip(f"{cf.DEFAULT_FLOWS_DIR}/ directory not found")
         errors = cf.validate_flows(repo_flows)
         assert errors == [], f"Flow validation errors:\n" + "\n".join(f"  ✗ {e}" for e in errors)

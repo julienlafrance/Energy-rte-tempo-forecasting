@@ -20,6 +20,7 @@ from pathlib import Path
 
 import yaml
 
+DEFAULT_FLOWS_DIR = "10-flows"
 REQUIRED_FIELDS = {"id", "namespace"}
 EXPECTED_NAMESPACE = "projet705"
 
@@ -139,7 +140,7 @@ def validate_flows(flows_dir: Path) -> list[str]:
 
 
 def main() -> int:
-    flows_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("150-flows")
+    flows_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(DEFAULT_FLOWS_DIR)
     if not flows_dir.exists():
         print(f"ERROR: flows directory '{flows_dir}' does not exist", file=sys.stderr)
         return 1
