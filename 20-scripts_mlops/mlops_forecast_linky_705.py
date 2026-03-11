@@ -18,6 +18,7 @@ Usage :
 #     "pandas",
 #     "numpy",
 #     "psycopg2-binary",
+#     "scipy",
 #     "mlflow",
 # ]
 # ///
@@ -32,6 +33,7 @@ import pandas as pd
 import psycopg2
 from mlflow.tracking import MlflowClient
 from psycopg2.extras import execute_values
+from scipy.stats import ks_2samp
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 warnings.filterwarnings("ignore")
@@ -139,6 +141,20 @@ def create_performance_table(conn):
         cur.execute("""
         ALTER TABLE gold.mlops_linky_performance
         ADD COLUMN IF NOT EXISTS mse DOUBLE PRECISION;
+        """)
+    conn.commit()
+
+
+def create_drift_table(conn):
+    with conn.cursor() as cur:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS gold.mlops_linky_drift (
+            forecast_date TIMESTAMPTZ NOT NULL PRIMARY KEY,
+            ks_statistic DOUBLE PRECISION,
+            ks_pvalue DOUBLE PRECISION,
+            drift_detected BOOLEAN,
+            reference_period TEXT
+        );
         """)
     conn.commit()
 
@@ -300,6 +316,52 @@ def save_performance(conn, forecast_date, evaluation_date, horizon_hours, mae, m
     conn.commit()
 
 
+def compute_data_drift(conn, current_series, history_days=HISTORY_DAYS):
+    query = f"""
+    SELECT hour, SUM(consommation_kwh) as conso_kwh
+    FROM dbt_gold.linky_hourly
+    WHERE consommation_kwh IS NOT NULL
+      AND hour >= NOW() - INTERVAL '{history_days * 2} days'
+      AND hour < NOW() - INTERVAL '{history_days} days'
+    GROUP BY hour
+    ORDER BY hour
+    """
+    prev_df = pd.read_sql(query, conn)
+
+    if prev_df.empty or prev_df["conso_kwh"].isna().all():
+        return None, None, False
+
+    previous_series = prev_df["conso_kwh"].dropna().values
+    if len(previous_series) == 0:
+        return None, None, False
+
+    ks_stat, ks_pval = ks_2samp(current_series, previous_series)
+    drift_detected = ks_pval < 0.05
+    return float(ks_stat), float(ks_pval), drift_detected
+
+
+def save_drift(conn, forecast_date, ks_stat, ks_pval, drift_detected):
+    ks_stat = None if (ks_stat is None or np.isnan(ks_stat)) else float(ks_stat)
+    ks_pval = None if (ks_pval is None or np.isnan(ks_pval)) else float(ks_pval)
+    drift_detected = bool(drift_detected) if drift_detected is not None else False
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO gold.mlops_linky_drift
+            (forecast_date, ks_statistic, ks_pvalue, drift_detected, reference_period)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (forecast_date) DO UPDATE SET
+                ks_statistic = EXCLUDED.ks_statistic,
+                ks_pvalue = EXCLUDED.ks_pvalue,
+                drift_detected = EXCLUDED.drift_detected,
+                reference_period = EXCLUDED.reference_period
+            """,
+            (forecast_date, ks_stat, ks_pval, drift_detected, f"{HISTORY_DAYS}d-glissement"),
+        )
+    conn.commit()
+
+
 def load_latest_trained_model():
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client = MlflowClient()
@@ -343,27 +405,59 @@ def main():
     conn = get_pg_connection()
     print(f"  ✓ Connecté à {PG_DB}@{PG_HOST}")
 
-    print("\n[2/6] Évaluation performance du dernier forecast complet...")
+    print("\n[2/7] Évaluation performance du dernier forecast complet...")
     create_performance_table(conn)
     perf_result = evaluate_previous_forecast(conn, horizon_hours=N_PERIODS)
+    perf_metrics = {}
     if perf_result:
+        forecast_date_prev, eval_date, horizon, mae, mse, rmse, mape, coverage, n_points, model_order = perf_result
         save_performance(conn, *perf_result)
         print("  ✓ Performance rolling mise à jour")
+        print(f"    MAE={mae:.4f}, MSE={mse:.4f}, RMSE={rmse:.4f}")
+        if mape is not None:
+            print(f"    MAPE={mape:.2f}%")
+        if coverage is not None:
+            print(f"    Coverage80={coverage:.1f}% ({n_points} points)")
+
+        perf_metrics = {
+            f"performance_last{horizon}h_mae_kwh": mae,
+            f"performance_last{horizon}h_mse_kwh2": mse,
+            f"performance_last{horizon}h_rmse_kwh": rmse,
+            f"performance_last{horizon}h_mape_pct": mape,
+            f"performance_last{horizon}h_coverage_interval80_pct": coverage,
+            f"performance_last{horizon}h_n_points": float(n_points),
+        }
+        perf_metrics = {
+            key: float(value)
+            for key, value in perf_metrics.items()
+            if value is not None and np.isfinite(value)
+        }
     else:
         print("  ⚠ Pas encore de données observées pour évaluation")
 
-    print(f"\n[3/6] Récupération des {HISTORY_DAYS} derniers jours...")
+    print(f"\n[3/7] Récupération des {HISTORY_DAYS} derniers jours...")
     df = fetch_consumption(conn, HISTORY_DAYS)
     df = interpolate_missing_hours(df)
     df = cap_outliers(df)
     series = df["conso_kwh"]
     print(f"  ✓ Points utilisés: {len(series)}")
 
-    print("\n[4/6] Chargement du modèle entraîné...")
+    print("\n[4/7] Détection data drift (Kolmogorov-Smirnov)...")
+    create_drift_table(conn)
+    ks_stat, ks_pval, drift_detected = compute_data_drift(conn, series.values, HISTORY_DAYS)
+
+    forecast_date = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    save_drift(conn, forecast_date, ks_stat, ks_pval, drift_detected)
+    if ks_stat is None:
+        print("  ⚠ Drift non calculable (historique de référence insuffisant)")
+    else:
+        print(f"  ✓ KS={ks_stat:.4f}, p-value={ks_pval:.6g}, drift={drift_detected}")
+
+    print("\n[5/7] Chargement du modèle entraîné...")
     trained_model, loaded_model_uri = load_latest_trained_model()
     print(f"  ✓ Modèle chargé depuis {loaded_model_uri}")
 
-    print(f"\n[5/6] Génération de {N_PERIODS}h de prévisions...")
+    print(f"\n[6/7] Génération de {N_PERIODS}h de prévisions...")
     inference_model = SARIMAX(
         series,
         order=ORDER,
@@ -390,7 +484,7 @@ def main():
         index=forecast_index,
     )
 
-    print("\n[6/6] Sauvegarde forecast + tracking MLflow...")
+    print("\n[7/7] Sauvegarde forecast + tracking MLflow...")
     create_forecast_table(conn)
     model_order_str = f"SARIMA{ORDER}x{SEASONAL_ORDER}"
     forecast_date = save_to_postgres(conn, forecast_df, model_order_str)
@@ -398,7 +492,8 @@ def main():
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
-    with mlflow.start_run():
+    forecast_run_name = f"forecast_{forecast_date.strftime('%Y%m%d_%H%M%S')}"
+    with mlflow.start_run(run_name=forecast_run_name) as run:
         mlflow.set_tag("phase", "forecast")
         mlflow.log_params(
             {
@@ -408,16 +503,22 @@ def main():
                 "history_days": HISTORY_DAYS,
                 "n_periods": N_PERIODS,
                 "n_points": len(series),
+                "forecast_date": forecast_date.isoformat(),
                 "source": "postgresql/dbt_gold.linky_hourly",
             }
         )
-        mlflow.log_metrics(
-            {
-                "mean_consumption": float(series.mean()),
-                "std_consumption": float(series.std()),
-                "mean_forecast": float(forecast.mean()),
-            }
-        )
+        metrics = {
+            "mean_consumption": float(series.mean()),
+            "std_consumption": float(series.std()),
+            "mean_forecast": float(forecast.mean()),
+            "ks_statistic": float(ks_stat) if ks_stat is not None else np.nan,
+            "ks_pvalue": float(ks_pval) if ks_pval is not None else np.nan,
+            "drift_detected": 1.0 if drift_detected else 0.0,
+        }
+        metrics.update(perf_metrics)
+        mlflow.log_metrics(metrics)
+        print(f"  ✓ MLflow run_id={run.info.run_id}, run_name={forecast_run_name}")
+        print(f"  ✓ Metrics loggées: {metrics}")
 
     conn.close()
     print("\n" + "=" * 60)
