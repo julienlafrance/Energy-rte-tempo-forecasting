@@ -72,6 +72,7 @@ SARIMA_CANDIDATES = [
 ]
 HISTORY_DAYS = 21
 N_PERIODS = 72
+TRAIN_RATIO = 0.70  # 70% entraînement / 30% test
 
 
 def get_pg_connection():
@@ -120,7 +121,7 @@ def cap_outliers(df, col="conso_kwh", factor=3.0):
     return df
 
 
-def train_best_sarima(series, candidates):
+def train_best_sarima(train_series, candidates, test_series=None):
     print(f"  {len(candidates)} configurations SARIMA à évaluer")
     best_model = None
     best_order = None
@@ -128,12 +129,14 @@ def train_best_sarima(series, candidates):
     best_aic = float("inf")
     training_results = []
 
+    n_test = len(test_series) if test_series is not None else 0
+
     for idx, (order, seasonal_order) in enumerate(candidates, start=1):
         model_name = f"SARIMA{order}x{seasonal_order}"
         print(f"  [{idx}/{len(candidates)}] {model_name}")
         try:
             model = SARIMAX(
-                series,
+                train_series,
                 order=order,
                 seasonal_order=seasonal_order,
                 enforce_stationarity=False,
@@ -142,6 +145,27 @@ def train_best_sarima(series, candidates):
             fitted = model.fit(disp=False)
             aic = float(fitted.aic)
             bic = float(fitted.bic)
+
+            # Évaluation sur le jeu de test (30%)
+            test_mae = float("nan")
+            test_rmse = float("nan")
+            test_mape = float("nan")
+            if test_series is not None and n_test > 0:
+                try:
+                    fc = fitted.get_forecast(steps=n_test)
+                    y_pred = np.maximum(np.asarray(fc.predicted_mean), 0)
+                    y_true = np.asarray(test_series)
+                    errors = y_true - y_pred
+                    test_mae = float(np.mean(np.abs(errors)))
+                    test_rmse = float(np.sqrt(np.mean(errors ** 2)))
+                    non_zero = y_true > 0
+                    if np.any(non_zero):
+                        test_mape = float(
+                            np.mean(np.abs(errors[non_zero] / y_true[non_zero])) * 100
+                        )
+                except Exception as exc_test:
+                    print(f"      ⚠ Évaluation test échouée: {exc_test}")
+
             training_results.append(
                 {
                     "candidate_idx": idx,
@@ -149,11 +173,15 @@ def train_best_sarima(series, candidates):
                     "seasonal_order": seasonal_order,
                     "aic": aic,
                     "bic": bic,
+                    "test_mae": test_mae,
+                    "test_rmse": test_rmse,
+                    "test_mape": test_mape,
                     "status": "success",
                     "error": "",
                 }
             )
-            print(f"      AIC={aic:.2f} | BIC={bic:.2f}")
+            mae_str = f" | test_MAE={test_mae:.4f} RMSE={test_rmse:.4f}" if n_test > 0 else ""
+            print(f"      AIC={aic:.2f} | BIC={bic:.2f}{mae_str}")
 
             if aic < best_aic:
                 best_aic = aic
@@ -168,6 +196,9 @@ def train_best_sarima(series, candidates):
                     "seasonal_order": seasonal_order,
                     "aic": float("nan"),
                     "bic": float("nan"),
+                    "test_mae": float("nan"),
+                    "test_rmse": float("nan"),
+                    "test_mape": float("nan"),
                     "status": "failed",
                     "error": str(exc),
                 }
@@ -231,15 +262,52 @@ def main():
     df = interpolate_missing_hours(df)
     df = cap_outliers(df)
     series = df["conso_kwh"].values
-    print(f"  ✓ Points utilisés: {len(series)}")
+    print(f"  ✓ Points disponibles: {len(series)}")
 
-    print("\n[3/4] Entraînement modèle...")
-    model, best_order, best_seasonal_order, training_results = train_best_sarima(series, SARIMA_CANDIDATES)
+    # Split temporel 70% train / 30% test
+    n_train = int(len(series) * TRAIN_RATIO)
+    n_test = len(series) - n_train
+    train_series = series[:n_train]
+    test_series = series[n_train:]
+    print(f"  ✓ Split {int(TRAIN_RATIO*100)}/{int((1-TRAIN_RATIO)*100)}: train={n_train} pts, test={n_test} pts")
+
+    print("\n[3/4] Entraînement modèle (sur jeu train 70%)...")
+    model, best_order, best_seasonal_order, training_results = train_best_sarima(
+        train_series, SARIMA_CANDIDATES, test_series
+    )
     model_order_str = f"SARIMA{best_order}x{best_seasonal_order}"
     train_date = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-    print(f"  ✓ Modèle: {model_order_str}")
-    print(f"  AIC: {model.aic:.2f}")
-    print(f"  BIC: {model.bic:.2f}")
+
+    # Métriques test du meilleur modèle
+    best_result = next(
+        (r for r in training_results
+         if r["order"] == best_order and r["seasonal_order"] == best_seasonal_order),
+        {},
+    )
+    test_mae = best_result.get("test_mae", float("nan"))
+    test_rmse = best_result.get("test_rmse", float("nan"))
+    test_mape = best_result.get("test_mape", float("nan"))
+
+    print(f"  ✓ Meilleur modèle : {model_order_str}")
+    print(f"  AIC (train): {model.aic:.2f}")
+    print(f"  BIC (train): {model.bic:.2f}")
+    if not np.isnan(test_mae):
+        print(f"  Test MAE : {test_mae:.4f} kWh/h")
+        print(f"  Test RMSE: {test_rmse:.4f} kWh/h")
+        if not np.isnan(test_mape):
+            print(f"  Test MAPE: {test_mape:.2f}%")
+
+    # Réentraînement sur la série complète avant mise en production
+    print(f"\n  Réentraînement sur série complète ({len(series)} pts)...")
+    final_model = SARIMAX(
+        series,
+        order=best_order,
+        seasonal_order=best_seasonal_order,
+        enforce_stationarity=False,
+        enforce_invertibility=False,
+    ).fit(disp=False)
+    model = final_model  # modèle final sauvegardé dans MLflow
+    print(f"  ✓ Réentraînement terminé — AIC={model.aic:.2f}, BIC={model.bic:.2f}")
 
     print("\n[4/4] Tracking MLflow + registry...")
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
@@ -262,6 +330,9 @@ def main():
                 "history_days": HISTORY_DAYS,
                 "n_periods": N_PERIODS,
                 "n_points": len(series),
+                "n_train": n_train,
+                "n_test": n_test,
+                "train_ratio": TRAIN_RATIO,
                 "source": "postgresql/dbt_gold.linky_hourly",
                 "model_registry_s3_bucket": MODEL_REGISTRY_S3_BUCKET or "",
                 "model_registry_s3_prefix": MODEL_REGISTRY_S3_PREFIX,
@@ -277,15 +348,24 @@ def main():
                 mlflow.log_param(f"candidate_{idx}_error", result["error"][:240])
             mlflow.log_metric(f"candidate_{idx}_aic", float(result["aic"]))
             mlflow.log_metric(f"candidate_{idx}_bic", float(result["bic"]))
+            if not np.isnan(result.get("test_mae", float("nan"))):
+                mlflow.log_metric(f"candidate_{idx}_test_mae", float(result["test_mae"]))
+                mlflow.log_metric(f"candidate_{idx}_test_rmse", float(result["test_rmse"]))
+                if not np.isnan(result.get("test_mape", float("nan"))):
+                    mlflow.log_metric(f"candidate_{idx}_test_mape", float(result["test_mape"]))
 
-        mlflow.log_metrics(
-            {
-                "aic": model.aic,
-                "bic": model.bic,
-                "mean_consumption": float(np.mean(series)),
-                "std_consumption": float(np.std(series)),
-            }
-        )
+        test_metrics = {
+            "aic": model.aic,
+            "bic": model.bic,
+            "mean_consumption": float(np.mean(series)),
+            "std_consumption": float(np.std(series)),
+        }
+        if not np.isnan(test_mae):
+            test_metrics["test_mae"] = test_mae
+            test_metrics["test_rmse"] = test_rmse
+            if not np.isnan(test_mape):
+                test_metrics["test_mape"] = test_mape
+        mlflow.log_metrics(test_metrics)
 
         mlflow.statsmodels.log_model(model, artifact_path="model")
         run = mlflow.active_run()
