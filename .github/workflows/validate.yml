@@ -1,0 +1,31 @@
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate flows & tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install CI dependencies
+        run: uv sync --extra ci
+
+      - name: Check Kestra flows
+        run: uv run python 100-scripts_mlops/ci/check_flows.py 150-flows
+
+      - name: Run tests
+        run: uv run pytest 130-tests/ -v

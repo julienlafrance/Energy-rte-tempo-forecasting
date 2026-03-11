@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+Kestra flow validator for CI.
+
+Checks:
+  - YAML syntax
+  - Required top-level fields (id, namespace, tasks)
+  - No duplicate flow IDs across the repository
+  - Subflow references resolve to known flow IDs
+  - No hardcoded credentials (passwords, secrets in plain text)
+  - Consistent namespace convention
+
+Usage:
+  python 100-scripts_mlops/ci/check_flows.py [flows_dir]
+"""
+
+import sys
+import re
+from pathlib import Path
+
+import yaml
+
+REQUIRED_FIELDS = {"id", "namespace"}
+EXPECTED_NAMESPACE = "projet705"
+
+# Patterns that indicate hardcoded secrets (case-insensitive)
+HARDCODED_SECRET_PATTERNS = [
+    re.compile(r'password:\s*["\']?(?!.*\{\{)(?!.*kv\()[A-Za-z0-9]', re.IGNORECASE),
+    re.compile(r'secret:\s*["\']?(?!.*\{\{)(?!.*kv\()[A-Za-z0-9]', re.IGNORECASE),
+]
+
+
+def find_flow_files(base: Path) -> list[Path]:
+    return sorted(base.rglob("*.yaml")) + sorted(base.rglob("*.yml"))
+
+
+def parse_flow(path: Path) -> tuple[dict | None, str | None]:
+    """Parse a YAML file. Returns (data, error)."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            return None, f"not a YAML mapping (got {type(data).__name__})"
+        return data, None
+    except yaml.YAMLError as e:
+        return None, f"YAML syntax error: {e}"
+
+
+def collect_subflow_refs(data: dict) -> list[str]:
+    """Recursively find all flowId references in Subflow tasks."""
+    refs = []
+    if isinstance(data, dict):
+        if data.get("type", "").endswith(".Subflow") and "flowId" in data:
+            raw = data["flowId"]
+            # skip template expressions — they aren't statically resolvable
+            if "{{" not in str(raw):
+                refs.append(str(raw))
+        for v in data.values():
+            refs.extend(collect_subflow_refs(v))
+    elif isinstance(data, list):
+        for item in data:
+            refs.extend(collect_subflow_refs(item))
+    return refs
+
+
+def check_hardcoded_secrets(path: Path) -> list[str]:
+    """Scan raw file text for obvious hardcoded credentials."""
+    errors = []
+    text = path.read_text()
+    for pattern in HARDCODED_SECRET_PATTERNS:
+        for match in pattern.finditer(text):
+            line_no = text[:match.start()].count("\n") + 1
+            errors.append(f"line {line_no}: possible hardcoded secret")
+    return errors
+
+
+def validate_flows(flows_dir: Path) -> list[str]:
+    """Validate all flows and return a list of error strings."""
+    errors = []
+    files = find_flow_files(flows_dir)
+
+    if not files:
+        errors.append(f"no flow files found in {flows_dir}")
+        return errors
+
+    flow_ids: dict[str, Path] = {}
+    all_ids: set[str] = set()
+    subflow_refs: list[tuple[Path, str]] = []
+
+    for path in files:
+        rel = path.relative_to(flows_dir.parent) if flows_dir.parent != path else path
+        prefix = str(rel)
+
+        data, err = parse_flow(path)
+        if err:
+            errors.append(f"{prefix}: {err}")
+            continue
+
+        # Required fields
+        for field in REQUIRED_FIELDS:
+            if field not in data:
+                errors.append(f"{prefix}: missing required field '{field}'")
+
+        # tasks or inputs (subflows may only have inputs)
+        if "tasks" not in data and "inputs" not in data:
+            errors.append(f"{prefix}: missing 'tasks' (and no 'inputs' — not a valid flow)")
+
+        flow_id = data.get("id")
+        if flow_id:
+            # Duplicate check
+            if flow_id in flow_ids:
+                errors.append(
+                    f"{prefix}: duplicate flow id '{flow_id}' "
+                    f"(also in {flow_ids[flow_id]})"
+                )
+            flow_ids[flow_id] = rel
+            all_ids.add(flow_id)
+
+        # Namespace check
+        ns = data.get("namespace")
+        if ns and ns != EXPECTED_NAMESPACE:
+            errors.append(
+                f"{prefix}: namespace '{ns}' != expected '{EXPECTED_NAMESPACE}'"
+            )
+
+        # Collect subflow references
+        subflow_refs.extend((rel, ref) for ref in collect_subflow_refs(data))
+
+        # Hardcoded secrets
+        for secret_err in check_hardcoded_secrets(path):
+            errors.append(f"{prefix}: {secret_err}")
+
+    # Validate subflow references
+    for rel, ref in subflow_refs:
+        if ref not in all_ids:
+            errors.append(f"{rel}: subflow reference '{ref}' not found in repository")
+
+    return errors
+
+
+def main() -> int:
+    flows_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("150-flows")
+    if not flows_dir.exists():
+        print(f"ERROR: flows directory '{flows_dir}' does not exist", file=sys.stderr)
+        return 1
+
+    print(f"Checking flows in {flows_dir.resolve()} ...")
+    errors = validate_flows(flows_dir)
+
+    if errors:
+        print(f"\n{len(errors)} error(s) found:\n")
+        for err in errors:
+            print(f"  ✗ {err}")
+        return 1
+
+    n_files = len(find_flow_files(flows_dir))
+    print(f"  ✓ {n_files} flow(s) validated — no issues found")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
