@@ -2,7 +2,7 @@
 set -euo pipefail
 
 KESTRA_URL="${KESTRA_URL:-http://localhost:8082}"
-FLOW_DIR="${FLOW_DIR:-150-flows/dev}"
+FLOW_DIR="${FLOW_DIR:-10-flows}"
 
 echo "Deploying flows from $FLOW_DIR"
 echo "Kestra URL: $KESTRA_URL"
