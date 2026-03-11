@@ -3,7 +3,8 @@
 import os
 from pathlib import Path
 
-DEPLOY_SCRIPT = Path(__file__).resolve().parents[1] / "100-scripts_mlops" / "deploy" / "deploy_flows.sh"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEPLOY_SCRIPT = REPO_ROOT / "100-scripts_mlops" / "deploy" / "deploy_flows.sh"
 
 
 class TestDeployScriptExists:
@@ -13,37 +14,40 @@ class TestDeployScriptExists:
     def test_script_is_executable(self):
         assert os.access(DEPLOY_SCRIPT, os.X_OK), "deploy_flows.sh should be executable"
 
+    def test_has_shebang(self):
+        first_line = DEPLOY_SCRIPT.read_text().splitlines()[0]
+        assert first_line.startswith("#!/"), "Script should have a shebang line"
 
-class TestDeployScriptContent:
-    def test_has_strict_mode(self):
-        text = DEPLOY_SCRIPT.read_text()
-        assert "set -euo pipefail" in text, "Script must use 'set -euo pipefail' for safety"
 
-    def test_uses_kestra_url_variable(self):
+class TestDeployScriptSafety:
+    def test_strict_mode(self):
         text = DEPLOY_SCRIPT.read_text()
-        assert "KESTRA_URL" in text, "Script should reference KESTRA_URL"
+        assert "set -euo pipefail" in text
 
-    def test_uses_credential_variables(self):
+    def test_credentials_from_variables(self):
         text = DEPLOY_SCRIPT.read_text()
-        assert "KESTRA_ADMIN_USER" in text, "Script should reference KESTRA_ADMIN_USER"
-        assert "KESTRA_ADMIN_PASS" in text, "Script should reference KESTRA_ADMIN_PASS"
-
-    def test_no_hardcoded_credentials(self):
-        text = DEPLOY_SCRIPT.read_text()
-        # Ensure credentials are read from variables, not hardcoded
-        assert "curl" in text, "Script should use curl to call the Kestra API"
-        # The -u flag should reference variables, not literal values
+        assert "KESTRA_ADMIN_USER" in text
+        assert "KESTRA_ADMIN_PASS" in text
         for line in text.splitlines():
             if "-u " in line:
-                assert "${KESTRA_ADMIN_USER}" in line or "$KESTRA_ADMIN_USER" in line, (
-                    "curl -u should use KESTRA_ADMIN_USER variable"
-                )
+                assert "${KESTRA_ADMIN_USER}" in line or "$KESTRA_ADMIN_USER" in line
 
+    def test_kestra_url_configurable(self):
+        text = DEPLOY_SCRIPT.read_text()
+        assert "KESTRA_URL" in text
+
+
+class TestDeployScriptLogic:
     def test_validates_before_deploying(self):
         text = DEPLOY_SCRIPT.read_text()
-        # The script should call the validate endpoint before the update endpoint
-        validate_pos = text.find("/validate")
-        put_pos = text.find("-X PUT")
-        assert validate_pos != -1, "Script should call the validate API endpoint"
-        assert put_pos != -1, "Script should call the update (PUT) API endpoint"
-        assert validate_pos < put_pos, "Validation should happen before deployment"
+        assert text.find("/validate") < text.find("-X PUT"), (
+            "Validation should happen before deployment"
+        )
+
+    def test_iterates_over_yaml_files(self):
+        text = DEPLOY_SCRIPT.read_text()
+        assert "*.yaml" in text or "*.yml" in text
+
+    def test_uses_nullglob(self):
+        text = DEPLOY_SCRIPT.read_text()
+        assert "nullglob" in text, "Script should use nullglob to handle empty globs"

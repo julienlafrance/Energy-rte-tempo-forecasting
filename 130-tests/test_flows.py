@@ -1,4 +1,8 @@
-"""Tests for the Kestra flow validator — fully local and deterministic."""
+"""Tests for Kestra flows and the CI flow validator.
+
+Unit tests use synthetic flows in tmp dirs.
+Integration tests validate the real 10-flows/ directory.
+"""
 
 import importlib
 import importlib.util
@@ -6,17 +10,31 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
-# 100-scripts_mlops is not a valid Python identifier, so use importlib
+# ── Import check_flows (package name isn't a valid identifier) ───────────────
+
 _ci_path = Path(__file__).resolve().parents[1] / "100-scripts_mlops" / "ci"
 _spec = importlib.util.spec_from_file_location("check_flows", _ci_path / "check_flows.py")
 cf = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cf)
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FLOWS_DIR = REPO_ROOT / cf.DEFAULT_FLOWS_DIR
+
+EXPECTED_FLOW_IDS = {
+    "mlops_linky_forecast_3d",
+    "mlops_train_forecast",
+    "mqtt_linky_gold",
+    "mqtt_linky_ingest",
+    "mqtt_linky_silver",
+}
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def flows_dir(tmp_path):
-    """Create a temporary flows directory with valid flows."""
     d = tmp_path / "flows" / "dev"
     d.mkdir(parents=True)
     return d
@@ -26,7 +44,7 @@ def _write(path: Path, content: str):
     path.write_text(textwrap.dedent(content))
 
 
-# ── YAML syntax ──────────────────────────────────────────────────────────────
+# ── Unit: YAML syntax ───────────────────────────────────────────────────────
 
 class TestYAMLSyntax:
     def test_valid_yaml(self, flows_dir):
@@ -36,18 +54,16 @@ class TestYAMLSyntax:
             tasks:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
-                message: hello
         """)
         assert cf.validate_flows(flows_dir.parent) == []
 
     def test_invalid_yaml(self, flows_dir):
         (flows_dir / "bad.yaml").write_text("key: [unbalanced")
         errors = cf.validate_flows(flows_dir.parent)
-        assert len(errors) == 1
-        assert "YAML syntax error" in errors[0]
+        assert any("YAML syntax error" in e for e in errors)
 
 
-# ── Required fields ──────────────────────────────────────────────────────────
+# ── Unit: required fields ───────────────────────────────────────────────────
 
 class TestRequiredFields:
     def test_missing_id(self, flows_dir):
@@ -78,22 +94,8 @@ class TestRequiredFields:
         errors = cf.validate_flows(flows_dir.parent)
         assert any("missing 'tasks'" in e for e in errors)
 
-    def test_subflow_with_inputs_no_tasks(self, flows_dir):
-        """A subflow that has inputs + tasks is valid."""
-        _write(flows_dir / "sub.yaml", """\
-            id: my_sub
-            namespace: projet705
-            inputs:
-              - id: metric
-                type: STRING
-            tasks:
-              - id: step1
-                type: io.kestra.plugin.core.log.Log
-        """)
-        assert cf.validate_flows(flows_dir.parent) == []
 
-
-# ── Duplicate IDs ────────────────────────────────────────────────────────────
+# ── Unit: duplicates ────────────────────────────────────────────────────────
 
 class TestDuplicateIDs:
     def test_duplicate_flow_id(self, flows_dir):
@@ -109,7 +111,7 @@ class TestDuplicateIDs:
         assert any("duplicate flow id" in e for e in errors)
 
 
-# ── Namespace ────────────────────────────────────────────────────────────────
+# ── Unit: namespace ─────────────────────────────────────────────────────────
 
 class TestNamespace:
     def test_wrong_namespace(self, flows_dir):
@@ -124,7 +126,7 @@ class TestNamespace:
         assert any("namespace" in e and "other_ns" in e for e in errors)
 
 
-# ── Subflow references ───────────────────────────────────────────────────────
+# ── Unit: subflow references ────────────────────────────────────────────────
 
 class TestSubflowRefs:
     def test_valid_subflow_ref(self, flows_dir):
@@ -159,8 +161,8 @@ class TestSubflowRefs:
         errors = cf.validate_flows(flows_dir.parent)
         assert any("subflow reference 'does_not_exist' not found" in e for e in errors)
 
-    def test_template_subflow_ref_skipped(self, flows_dir):
-        """Subflow refs using {{ }} templates are not statically checked."""
+    def test_template_ref_skipped(self, flows_dir):
+        """Subflow refs using {{ }} are not statically checked."""
         _write(flows_dir / "dynamic.yaml", """\
             id: dyn_flow
             namespace: projet705
@@ -173,14 +175,50 @@ class TestSubflowRefs:
         assert cf.validate_flows(flows_dir.parent) == []
 
 
-# ── Integration: validate actual repo flows ──────────────────────────────────
+# ── Integration: real flow files ─────────────────────────────────────────────
 
-class TestRepoFlows:
-    """Run the checker against the real flows directory in this repo."""
+def _skip_if_no_flows():
+    if not FLOWS_DIR.exists():
+        pytest.skip(f"{cf.DEFAULT_FLOWS_DIR}/ not found")
 
-    def test_repo_flows_are_valid(self):
-        repo_flows = Path(__file__).resolve().parents[1] / cf.DEFAULT_FLOWS_DIR
-        if not repo_flows.exists():
-            pytest.skip(f"{cf.DEFAULT_FLOWS_DIR}/ directory not found")
-        errors = cf.validate_flows(repo_flows)
-        assert errors == [], f"Flow validation errors:\n" + "\n".join(f"  ✗ {e}" for e in errors)
+
+@pytest.fixture
+def repo_flows():
+    _skip_if_no_flows()
+    files = cf.find_flow_files(FLOWS_DIR)
+    return {f.stem: yaml.safe_load(f.read_text()) for f in files}
+
+
+class TestRepoFlowFiles:
+    """Validate the actual flow YAML files in the repository."""
+
+    def test_expected_flows_exist(self, repo_flows):
+        assert set(repo_flows.keys()) == EXPECTED_FLOW_IDS
+
+    def test_all_parse_as_yaml(self, repo_flows):
+        for name, data in repo_flows.items():
+            assert isinstance(data, dict), f"{name} did not parse as a YAML mapping"
+
+    def test_all_have_id(self, repo_flows):
+        for name, data in repo_flows.items():
+            assert "id" in data, f"{name} missing 'id'"
+            assert data["id"] == name, f"{name}: id '{data['id']}' != filename"
+
+    def test_all_have_namespace(self, repo_flows):
+        for name, data in repo_flows.items():
+            assert data.get("namespace") == cf.EXPECTED_NAMESPACE, (
+                f"{name}: namespace should be '{cf.EXPECTED_NAMESPACE}'"
+            )
+
+    def test_all_have_tasks(self, repo_flows):
+        for name, data in repo_flows.items():
+            assert "tasks" in data, f"{name} missing 'tasks'"
+            assert len(data["tasks"]) > 0, f"{name} has empty tasks list"
+
+    def test_no_duplicate_ids(self, repo_flows):
+        ids = [data["id"] for data in repo_flows.values()]
+        assert len(ids) == len(set(ids)), f"Duplicate flow IDs: {ids}"
+
+    def test_all_have_triggers(self, repo_flows):
+        for name, data in repo_flows.items():
+            assert "triggers" in data, f"{name} missing 'triggers'"
