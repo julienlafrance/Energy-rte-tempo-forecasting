@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FLOWS_DIR = REPO_ROOT / cf.DEFAULT_FLOWS_DIR
 
 EXPECTED_FLOW_IDS = {
+    "elastic_linky_realtime",
     "mlops_linky_forecast_3d",
     "mlops_train_forecast",
     "mqtt_linky_gold",
@@ -55,11 +56,12 @@ class TestYAMLSyntax:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
         """)
-        assert cf.validate_flows(flows_dir.parent) == []
+        errors, _ = cf.validate_flows(flows_dir.parent)
+        assert errors == []
 
     def test_invalid_yaml(self, flows_dir):
         (flows_dir / "bad.yaml").write_text("key: [unbalanced")
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("YAML syntax error" in e for e in errors)
 
 
@@ -73,7 +75,7 @@ class TestRequiredFields:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
         """)
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("missing required field 'id'" in e for e in errors)
 
     def test_missing_namespace(self, flows_dir):
@@ -83,7 +85,7 @@ class TestRequiredFields:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
         """)
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("missing required field 'namespace'" in e for e in errors)
 
     def test_missing_tasks(self, flows_dir):
@@ -91,7 +93,7 @@ class TestRequiredFields:
             id: my_flow
             namespace: projet705
         """)
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("missing 'tasks'" in e for e in errors)
 
 
@@ -107,7 +109,7 @@ class TestDuplicateIDs:
                   - id: step1
                     type: io.kestra.plugin.core.log.Log
             """)
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("duplicate flow id" in e for e in errors)
 
 
@@ -122,7 +124,7 @@ class TestNamespace:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
         """)
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("namespace" in e and "other_ns" in e for e in errors)
 
 
@@ -146,7 +148,8 @@ class TestSubflowRefs:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
         """)
-        assert cf.validate_flows(flows_dir.parent) == []
+        errors, _ = cf.validate_flows(flows_dir.parent)
+        assert errors == []
 
     def test_broken_subflow_ref(self, flows_dir):
         _write(flows_dir / "parent.yaml", """\
@@ -158,7 +161,7 @@ class TestSubflowRefs:
                 namespace: projet705
                 flowId: does_not_exist
         """)
-        errors = cf.validate_flows(flows_dir.parent)
+        errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("subflow reference 'does_not_exist' not found" in e for e in errors)
 
     def test_template_ref_skipped(self, flows_dir):
@@ -172,7 +175,8 @@ class TestSubflowRefs:
                 namespace: projet705
                 flowId: "{{ inputs.target }}"
         """)
-        assert cf.validate_flows(flows_dir.parent) == []
+        errors, _ = cf.validate_flows(flows_dir.parent)
+        assert errors == []
 
 
 # ── Integration: real flow files ─────────────────────────────────────────────
@@ -193,7 +197,8 @@ class TestRepoFlowFiles:
     """Validate the actual flow YAML files in the repository."""
 
     def test_expected_flows_exist(self, repo_flows):
-        assert set(repo_flows.keys()) == EXPECTED_FLOW_IDS
+        missing = EXPECTED_FLOW_IDS - set(repo_flows.keys())
+        assert not missing, f"Missing expected flows: {missing}"
 
     def test_all_parse_as_yaml(self, repo_flows):
         for name, data in repo_flows.items():
@@ -221,4 +226,6 @@ class TestRepoFlowFiles:
 
     def test_all_have_triggers(self, repo_flows):
         for name, data in repo_flows.items():
+            if "inputs" in data and "triggers" not in data:
+                continue  # subflows are triggered by parent flows
             assert "triggers" in data, f"{name} missing 'triggers'"

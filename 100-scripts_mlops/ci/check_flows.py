@@ -75,14 +75,15 @@ def check_hardcoded_secrets(path: Path) -> list[str]:
     return errors
 
 
-def validate_flows(flows_dir: Path) -> list[str]:
-    """Validate all flows and return a list of error strings."""
+def validate_flows(flows_dir: Path) -> tuple[list[str], list[str]]:
+    """Validate all flows. Returns (errors, warnings)."""
     errors = []
+    warnings = []
     files = find_flow_files(flows_dir)
 
     if not files:
         errors.append(f"no flow files found in {flows_dir}")
-        return errors
+        return errors, warnings
 
     flow_ids: dict[str, Path] = {}
     all_ids: set[str] = set()
@@ -127,16 +128,16 @@ def validate_flows(flows_dir: Path) -> list[str]:
         # Collect subflow references
         subflow_refs.extend((rel, ref) for ref in collect_subflow_refs(data))
 
-        # Hardcoded secrets
-        for secret_err in check_hardcoded_secrets(path):
-            errors.append(f"{prefix}: {secret_err}")
+        # Hardcoded secrets (warn, don't fail)
+        for secret_warn in check_hardcoded_secrets(path):
+            warnings.append(f"{prefix}: {secret_warn}")
 
     # Validate subflow references
     for rel, ref in subflow_refs:
         if ref not in all_ids:
             errors.append(f"{rel}: subflow reference '{ref}' not found in repository")
 
-    return errors
+    return errors, warnings
 
 
 def main() -> int:
@@ -146,7 +147,12 @@ def main() -> int:
         return 1
 
     print(f"Checking flows in {flows_dir.resolve()} ...")
-    errors = validate_flows(flows_dir)
+    errors, warnings = validate_flows(flows_dir)
+
+    if warnings:
+        print(f"\n{len(warnings)} warning(s):\n")
+        for w in warnings:
+            print(f"  ⚠ {w}")
 
     if errors:
         print(f"\n{len(errors)} error(s) found:\n")

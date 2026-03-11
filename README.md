@@ -129,6 +129,16 @@ Le CD s'exécute sur un **runner self-hosted** installé sur la VM de production
 
 > 📖 Documentation détaillée : [`170-docs/ci_cd.md`](170-docs/ci_cd.md)
 
+### Développement local — pre-commit & Makefile
+
+```bash
+make install      # installe les dépendances + active pre-commit
+make check        # lance toutes les vérifications (flows + tests + pre-commit)
+make fix          # corrige automatiquement le formatting
+```
+
+Les hooks pre-commit reproduisent les mêmes checks que la CI (validation flows, pytest, trailing whitespace, YAML syntax).
+
 ---
 
 ## Monitoring
