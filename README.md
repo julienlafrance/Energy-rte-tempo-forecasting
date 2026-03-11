@@ -87,7 +87,7 @@ Forecast done (ou Data Drift) -> message Discord.
 
 ## API — FastAPI
 
-- Lien FastAPI: http://192.168.80.212:8000/docs
+- Lien FastAPI: https://api713.lafrance.io/docs
 - Objectif: récupérer les prévisions via requêtes HTTP
 
 ### Endpoints
@@ -107,7 +107,7 @@ Réponse JSON (horaire) :
 ## WebApp — Streamlit
 
 - Objectif: visualiser les prévisions
-- Lien Streamlit: http://192.168.80.212:8501/
+- Lien Streamlit: https://webapp713.lafrance.io
 
 ---
 
