@@ -1,13 +1,12 @@
+image:
+  repository: kestra-prod
+  tag: latest
+  pullPolicy: Never
+
 common:
-  image:
-    image: kestra-prod
-    tag: latest
-    pullPolicy: Never
   extraVolumeMounts:
     - name: kestra-storage
       mountPath: /app/storage
-    - name: scripts
-      mountPath: /app/scripts
     - name: scripts-mlops
       mountPath: /app/scripts_mlops
     - name: dbt-linky
@@ -17,10 +16,6 @@ common:
       hostPath:
         path: /home/dataia25/projet/50-docker/kestra/data
         type: DirectoryOrCreate
-    - name: scripts
-      hostPath:
-        path: /home/dataia25/projet/100-scripts
-        type: Directory
     - name: scripts-mlops
       hostPath:
         path: /home/dataia25/projet/100-scripts_mlops
