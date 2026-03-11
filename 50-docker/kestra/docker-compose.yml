@@ -1,0 +1,53 @@
+services:
+  kestra:
+    build:
+      context: ./build
+      dockerfile: Dockerfile
+    image: kestra-dbt:latest
+    pull_policy: never
+    container_name: kestra
+    restart: unless-stopped
+    user: "root"
+    command: server standalone
+    ports:
+      - "8082:8080"
+    volumes:
+        - ./data:/app/storage
+        - ./tmp:/tmp/kestra-wd
+        - /var/run/docker.sock:/var/run/docker.sock
+        - /home/dataia25/projet/60-dbt/linky:/app/dbt/linky
+        - /home/dataia25/projet/100-scripts:/app/scripts
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://projet-db:5432/airflow?currentSchema=kestra
+            driverClassName: org.postgresql.Driver
+            username: airflow
+            password: airflow
+        kestra:
+          server:
+            basic-auth:
+              enabled: true
+              username: 705@lafrance.io
+              password: Proj@705
+          repository:
+            type: postgres
+          storage:
+            type: local
+            local:
+              basePath: /app/storage
+          queue:
+            type: postgres
+          jdbc:
+            cleaner:
+              initial-delay: 1h
+              fixed-delay: 1h
+              retention: 2d
+    extra_hosts:
+      - "s3fast.lafrance.io:172.17.0.1"
+    networks:
+      - projet-net
+networks:
+  projet-net:
+    external: true

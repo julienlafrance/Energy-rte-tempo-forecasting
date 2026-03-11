@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg16-all
+    container_name: projet-db
+    shm_size: '256mb'
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+      TIMESCALEDB_TELEMETRY: "off"
+    volumes:
+      - ./data/postgres-ha:/home/postgres/pgdata
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    networks:
+      - projet-net
+
+networks:
+  projet-net:
+    external: true

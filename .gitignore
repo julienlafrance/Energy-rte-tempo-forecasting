@@ -1,0 +1,47 @@
+# Secrets
+00-secrets/
+
+# Données
+90-data/
+
+# Environnements Python
+.venv/
+__pycache__/
+*.py[oc]
+
+# Credentials éparpillés
+*.env
+.env
+
+# Runtime Docker
+50-docker/kestra/data/
+50-docker/kestra/tmp/
+50-docker/kestra/v_since
+50-docker/postgres/data/
+50-docker/postgres/logs/
+50-docker/postgres/dags/
+50-docker/postgres/config/
+50-docker/postgres/plugins/
+
+# Elastic = dev only
+50-docker/elastic/
+
+# dbt = à refactorer (remplacer par 140-sql/)
+60-dbt/
+
+# Archives / proto
+101-tb/
+rte/
+
+# Backups et gros fichiers
+*.bak
+*.bak2
+*.pdf
+
+# OS
+.DS_Store
+
+# Bootstrap (contient secrets)
+bootstrap.sh
+.claude/
+CLAUDE.md
