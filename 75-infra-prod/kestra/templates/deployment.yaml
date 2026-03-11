@@ -170,7 +170,7 @@ spec:
           command:
             - "sh"
             - "-c"
-            - | 
+            - |
                 exec /app/kestra server {{ $type }} \
                 {{- if and (eq $type "worker") (ne $name "worker") }}
                 --worker-group={{ $name }} \

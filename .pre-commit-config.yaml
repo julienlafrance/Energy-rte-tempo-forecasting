@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^75-infra-prod/
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: check-flows
+        name: Validate Kestra flows
+        entry: uv run python 100-scripts_mlops/ci/check_flows.py
+        language: system
+        pass_filenames: false
+        files: ^10-flows/.*\.ya?ml$
+
+      - id: pytest
+        name: Run tests
+        entry: uv run pytest 130-tests/ -v --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true

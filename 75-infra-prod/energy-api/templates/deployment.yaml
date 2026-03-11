@@ -25,13 +25,13 @@ spec:
                 name: {{ .Chart.Name }}-config
           readinessProbe:
             httpGet:
-              path: /_stcore/health
+              path: /health
               port: {{ .Values.service.port }}
-            initialDelaySeconds: 10
+            initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /_stcore/health
+              path: /health
               port: {{ .Values.service.port }}
-            initialDelaySeconds: 15
+            initialDelaySeconds: 10
             periodSeconds: 30
