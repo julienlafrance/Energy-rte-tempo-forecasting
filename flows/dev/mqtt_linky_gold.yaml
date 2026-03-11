@@ -1,0 +1,20 @@
+id: mqtt_linky_gold
+namespace: projet705
+description: |
+  Runs the dbt gold layer transformation for Linky hourly aggregation.
+  Executes dbt run --select linky_hourly from the canonical dbt project path.
+
+tasks:
+  - id: dbt_gold
+    type: io.kestra.plugin.scripts.shell.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    script: |
+      set -euo pipefail
+      cd /opt/projet705/dbt
+      dbt run --profiles-dir . --select linky_hourly
+
+triggers:
+  - id: schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "5 * * * *"

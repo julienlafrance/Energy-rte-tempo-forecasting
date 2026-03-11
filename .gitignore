@@ -45,3 +45,5 @@ rte/
 bootstrap.sh
 .claude/
 CLAUDE.md
+
+tmp/

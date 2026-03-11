@@ -1,0 +1,29 @@
+id: mlops_linky_forecast_3d
+namespace: projet705
+description: |
+  SARIMA forecast for Linky energy consumption (72h horizon).
+  Reads from dbt_gold.linky_hourly, writes to gold.linky_forecast + Elasticsearch.
+  Tracked via MLflow.
+
+tasks:
+  - id: sarima_forecast
+    type: io.kestra.plugin.scripts.shell.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    env:
+      ES_HOST: "{{ kv('ES_URL') }}"
+      ES_PASS: "{{ kv('ES_PASS') }}"
+      PG_HOST: "{{ kv('PG_HOST') }}"
+      AWS_ACCESS_KEY_ID: "{{ kv('S3_ACCESS_KEY') }}"
+      AWS_SECRET_ACCESS_KEY: "{{ kv('S3_SECRET_KEY') }}"
+      MLFLOW_TRACKING_URI: "{{ kv('MLFLOW_TRACKING_URI') }}"
+      MLFLOW_S3_ENDPOINT_URL: "{{ kv('MLFLOW_S3_ENDPOINT_URL') }}"
+    script: |
+      set -euo pipefail
+      cd /opt/projet705/scripts
+      python3 forecast_linky_705.py
+
+triggers:
+  - id: every_6h
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 */6 * * *"

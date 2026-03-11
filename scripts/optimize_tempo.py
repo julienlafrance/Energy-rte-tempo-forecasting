@@ -16,9 +16,10 @@ Approche hybride :
   2. Optimisation Nelder-Mead des 6 coefficients de seuils (~2 secondes)
 
 Usage:
-    cd /app/scripts && uv run optimize_tempo.py
+    cd /opt/projet705/scripts && uv run optimize_tempo.py
 """
 
+import os
 import warnings
 import numpy as np
 import pandas as pd
@@ -30,10 +31,10 @@ from time import time
 warnings.filterwarnings("ignore", category=UserWarning)
 
 PG_CONFIG = {
-    "host": "projet-db",
-    "dbname": "airflow",
-    "user": "airflow",
-    "password": "airflow",
+    "host": os.environ.get("PG_HOST", "projet-db"),
+    "dbname": os.environ.get("PG_DB", "airflow"),
+    "user": os.environ.get("PG_USER", "airflow"),
+    "password": os.environ.get("PG_PASS", "airflow"),
 }
 
 RTE_PARAMS = {
