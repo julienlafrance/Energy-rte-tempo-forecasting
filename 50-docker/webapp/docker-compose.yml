@@ -1,0 +1,15 @@
+services:
+  webapp:
+    image: saraelmountasser/energy-webapp:latest
+    container_name: webapp
+    restart: unless-stopped
+    environment:
+      API_URL: http://energy-api:8000
+    ports:
+      - "8501:8501"
+    networks:
+      - projet-net
+
+networks:
+  projet-net:
+    external: true

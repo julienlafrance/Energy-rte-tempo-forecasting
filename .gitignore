@@ -4,6 +4,9 @@
 # Données
 90-data/
 
+# Claude
+.claude
+
 # Environnements Python
 .venv/
 __pycache__/

@@ -10,28 +10,28 @@ services:
     user: "root"
     command: server standalone
     ports:
-      - "${KESTRA_PORT:-8082}:8080"
+      - "8082:8080"
     volumes:
         - ./data:/app/storage
         - ./tmp:/tmp/kestra-wd
         - /var/run/docker.sock:/var/run/docker.sock
-        - ${HOST_DBT_PATH}:/app/dbt
-        - ${HOST_SCRIPTS_PATH}:/app/scripts
-        - ${HOST_SQL_PATH}:/app/sql
+        - /home/dataia25/projet/60-dbt/linky:/app/dbt/linky
+        - /home/dataia25/projet/100-scripts:/app/scripts
+        - /home/dataia25/projet/100-scripts_mlops:/app/scripts_mlops
     environment:
       KESTRA_CONFIGURATION: |
         datasources:
           postgres:
-            url: jdbc:postgresql://${PG_HOST:-projet-db}:${PG_PORT:-5432}/${PG_DB:-airflow}?currentSchema=kestra
+            url: jdbc:postgresql://projet-db:5432/airflow?currentSchema=kestra
             driverClassName: org.postgresql.Driver
-            username: ${PG_USER}
-            password: ${PG_PASS}
+            username: airflow
+            password: airflow
         kestra:
           server:
             basic-auth:
               enabled: true
-              username: ${KESTRA_ADMIN_USER}
-              password: ${KESTRA_ADMIN_PASS}
+              username: 705@lafrance.io
+              password: Proj@705
           repository:
             type: postgres
           storage:
@@ -46,7 +46,7 @@ services:
               fixed-delay: 1h
               retention: 2d
     extra_hosts:
-      - "s3fast.lafrance.io:${S3_HOST_IP:-172.17.0.1}"
+      - "s3fast.lafrance.io:172.17.0.1"
     networks:
       - projet-net
 networks:
