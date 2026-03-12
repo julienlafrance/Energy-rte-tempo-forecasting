@@ -1,0 +1,30 @@
+from pydantic import BaseModel, Field
+from datetime import date as _date, datetime
+from typing import List, Optional
+
+# Déclaration des outputs à renvoyer
+# === Consumption ===
+class HourlyPrediction(BaseModel):
+    hour: datetime = Field(..., description="Heure de la prévision")
+    predicted: Optional[float] = Field(None, description="Consommation prédite en kWh", example=1200.5)
+    lower: Optional[float] = Field(None, description="Borne inférieure de l'intervalle de confiance", example=1100.0)
+    upper: Optional[float] = Field(None, description="Borne supérieure de l'intervalle de confiance", example=1300.0)
+
+class ConsumptionForecast(BaseModel):
+    date: _date = Field(..., description="Date de la prévision")
+    predictions: List[HourlyPrediction] = Field(..., description="Liste des prévisions horaires")dataia25@705-projet:~/projet/110-api/api$ cat requirements.txt
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.12.1
+click==8.3.1
+fastapi==0.135.1
+h11==0.16.0
+idna==3.11
+psycopg2-binary==2.9.11
+pydantic==2.12.5
+pydantic_core==2.41.5
+starlette==0.52.1
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+uvicorn==0.41.0
+elasticsearch==8.17.0
