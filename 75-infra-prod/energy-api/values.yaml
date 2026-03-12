@@ -10,8 +10,8 @@ service:
   nodePort: 30088
   port: 8000
 
+## NOTE: Les secrets (PG_USER, PG_PASS) doivent être
+## fournis via values-secrets.yaml (non versionné).
 env:
   PG_HOST: "192.168.80.127"
   PG_DB: airflow
-  PG_USER: airflow
-  PG_PASS: airflow

@@ -1,0 +1,103 @@
+### -------------------------------
+### Image settings
+### -------------------------------
+
+image:
+  repository: kestra-prod
+  pullPolicy: Never
+  tag: latest
+
+### -------------------------------
+### Common settings
+### -------------------------------
+
+common:
+  extraVolumes:
+    - name: kestra-storage
+      hostPath:
+        path: /home/dataia25/projet/50-docker/kestra/data
+        type: DirectoryOrCreate
+    - name: scripts-mlops
+      hostPath:
+        path: /home/dataia25/projet/100-scripts_mlops
+        type: DirectoryOrCreate
+    - name: dbt-linky
+      hostPath:
+        path: /home/dataia25/projet/60-dbt/linky
+        type: DirectoryOrCreate
+  extraVolumeMounts:
+    - name: kestra-storage
+      mountPath: /app/storage
+    - name: scripts-mlops
+      mountPath: /app/scripts_mlops
+    - name: dbt-linky
+      mountPath: /app/dbt/linky
+
+### -------------------------------
+### Kestra deployments
+### -------------------------------
+
+deployments:
+  standalone:
+    enabled: true
+    dind:
+      enabled: false
+
+### -------------------------------
+### Kestra configurations
+### -------------------------------
+## NOTE: Les secrets (basic-auth, datasources) doivent être
+## fournis via --set ou un fichier séparé non versionné.
+## Ex: helm upgrade kestra . -f values-prod.yaml -f values-secrets.yaml
+
+configurations:
+  application:
+    kestra:
+      queue:
+        type: postgres
+      repository:
+        type: postgres
+      storage:
+        type: local
+        local:
+          basePath: /app/storage
+      server:
+        basic-auth:
+          enabled: true
+    datasources:
+      postgres:
+        url: jdbc:postgresql://192.168.80.127:5432/airflow?currentSchema=kestra
+        driverClassName: org.postgresql.Driver
+
+### -------------------------------
+### Service
+### -------------------------------
+
+service:
+  type: NodePort
+  ports:
+    http:
+      port: 8080
+      containerPort: 8080
+      targetPort: http
+      protocol: TCP
+      nodePort: 30082
+    management:
+      port: 8081
+      containerPort: 8081
+      targetPort: management
+      protocol: TCP
+      nodePort: 30083
+
+### -------------------------------
+### Disabled components
+### -------------------------------
+
+dind:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+minio:
+  enabled: false
