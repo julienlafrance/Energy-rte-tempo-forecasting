@@ -11,7 +11,7 @@ jobs:
     runs-on: [self-hosted]
 
     env:
-      KESTRA_URL: http://localhost:8082
+      KESTRA_URL: http://localhost:30082
       KESTRA_ADMIN_USER: ${{ secrets.KESTRA_ADMIN_USER }}
       KESTRA_ADMIN_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
 
