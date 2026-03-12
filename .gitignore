@@ -50,3 +50,11 @@ bootstrap.sh
 CLAUDE.md
 
 tmp/
+100-scripts/
+60-dbt/
+101-tb/
+140-sql/
+150-flows/
+160-helm/
+90-data/
+rte/
