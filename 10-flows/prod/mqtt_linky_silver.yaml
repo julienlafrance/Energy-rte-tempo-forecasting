@@ -1,0 +1,26 @@
+id: mqtt_linky_silver
+namespace: projet713
+labels:
+  env: "prod"
+  system.readOnly: "true"
+inputs:
+- id: metric
+  type: STRING
+  required: true
+- id: payload
+  type: STRING
+  required: true
+tasks:
+- id: upsert_silver
+  type: io.kestra.plugin.jdbc.postgresql.Query
+  sql: |
+    CALL dbt_silver.upsert_linky_energy(
+      '{{ inputs.metric }}',
+      {{ inputs.payload }}
+    )
+pluginDefaults:
+- type: io.kestra.plugin.jdbc.postgresql.Query
+  values:
+    url: "{{ kv('PG_JDBC') }}"
+    password: "{{ kv('PG_PASS') }}"
+    username: "{{ kv('PG_USER') }}"

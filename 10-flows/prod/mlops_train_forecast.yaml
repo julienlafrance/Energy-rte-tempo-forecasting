@@ -1,0 +1,67 @@
+id: mlops_train_forecast
+namespace: projet713
+labels:
+  env: "prod"
+  system.readOnly: "true"
+tasks:
+  - id: sarima_forecast
+    type: io.kestra.plugin.scripts.shell.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    beforeCommands:
+      - export PG_HOST="{{ kv('PG_HOST') }}"
+      - export PG_DB="{{ kv('PG_DB') }}"
+      - export PG_USER="{{ kv('PG_USER') }}"
+      - export PG_PASS="{{ kv('PG_PASS') }}"
+      - export AWS_ACCESS_KEY_ID="{{ kv('S3_ACCESS_KEY') }}"
+      - export AWS_SECRET_ACCESS_KEY="{{ kv('S3_SECRET_KEY') }}"
+      - export AWS_DEFAULT_REGION="{{ kv('S3_REGION') }}"
+      - export MODEL_REGISTRY_S3_BUCKET="{{ kv('S3_BUCKET') }}"
+      - export MODEL_REGISTRY_S3_ENDPOINT_URL="{{ kv('S3_ENDPOINT') }}"
+      - export MLFLOW_TRACKING_URI="{{ kv('MLFLOW_TRACKING_URI') }}"
+      - export MLFLOW_REGISTERED_MODEL_NAME="mlops_linky_sarima_705"
+    script: |
+      cd /app/scripts_mlops
+      python3 mlops_train_linky_705.py
+
+  - id: notify_discord_success
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ kv('DISCORD_WEBHOOK_URL') }}"
+    method: POST
+    contentType: application/json
+    body: |
+      {
+        "embeds": [{
+          "title": "Training Linky - Succes",
+          "description": "Le training SARIMA s est termine avec succes.",
+          "color": 3066993,
+          "fields": [
+            { "name": "Namespace", "value": "projet713", "inline": true },
+            { "name": "Execution", "value": "{{ execution.id }}", "inline": true }
+          ]
+        }]
+      }
+
+errors:
+  - id: notify_discord_failure
+    type: io.kestra.plugin.core.http.Request
+    uri: "{{ kv('DISCORD_WEBHOOK_URL') }}"
+    method: POST
+    contentType: application/json
+    body: |
+      {
+        "embeds": [{
+          "title": "Training Linky - Echec",
+          "description": "Le training SARIMA a echoue.",
+          "color": 15158332,
+          "fields": [
+            { "name": "Namespace", "value": "projet713", "inline": true },
+            { "name": "Execution", "value": "{{ execution.id }}", "inline": true }
+          ]
+        }]
+      }
+
+triggers:
+  - id: every_week
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 0 * * 0"

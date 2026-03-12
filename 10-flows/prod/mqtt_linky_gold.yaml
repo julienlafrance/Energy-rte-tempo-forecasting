@@ -1,0 +1,20 @@
+id: mqtt_linky_gold
+namespace: projet713
+labels:
+  env: "prod"
+  system.readOnly: "true"
+tasks:
+  - id: refresh_gold
+    type: io.kestra.plugin.jdbc.postgresql.Queries
+    sql: "{{ read('queries/linky_gold.sql') }}"
+    fetchType: STORE
+triggers:
+  - id: schedule
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "5 * * * *"
+pluginDefaults:
+  - type: io.kestra.plugin.jdbc.postgresql.Queries
+    values:
+      url: "{{ kv('PG_JDBC') }}"
+      password: "{{ kv('PG_PASS') }}"
+      username: "{{ kv('PG_USER') }}"
