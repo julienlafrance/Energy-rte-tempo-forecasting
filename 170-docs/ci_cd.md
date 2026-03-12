@@ -1,111 +1,192 @@
-# Pipeline CI/CD
+# Pipeline CI/CD — Kestra Flows
 
 ## Vue d'ensemble
 
-Ce projet utilise GitHub Actions pour l'intégration continue et le déploiement continu.
+| Workflow | Fichier | Déclencheur | Runner |
+|----------|---------|-------------|--------|
+| **CI** | `.github/workflows/ci.yml` | PR / push vers `main` | `ubuntu-latest` + `[self-hosted, dev]` |
+| **Protect prod** | `.github/workflows/protect-prod.yml` | PR vers `prod` | `ubuntu-latest` |
+| **CD** | `.github/workflows/deploy.yml` | push vers `prod` + `workflow_dispatch` | `[self-hosted, prod]` |
 
-| Étape | Workflow | Déclencheur | Runner |
-|-------|----------|-------------|--------|
-| CI    | `.github/workflows/validate.yml` | push / PR sur `main` | `ubuntu-latest` |
-| CD    | `.github/workflows/deploy.yml`   | push sur `prod` / manuel | `self-hosted` (VM de production) |
+Namespace cible : **`projet713`**
 
----
+### Branches
 
-## CI — Validation (`validate.yml`)
+| Branche | Rôle | Protégée |
+|---------|------|----------|
+| `main` | Intégration — code validé par la CI, prêt à être promu | ✅ |
+| `prod` | Production — seul le code promu ici est déployé | ✅ |
 
-S'exécute à chaque push et pull request ciblant `main`.
-
-Étapes :
-
-1. Checkout du dépôt
-2. Installation de Python 3.12 via `uv`
-3. Installation des dépendances CI (`uv sync --extra ci`)
-4. Validation des fichiers de flows Kestra via `check_flows.py`
-5. Exécution de la suite de tests avec `pytest`
-
-Le pipeline CI garantit que :
-
-- tous les fichiers YAML de flows sont correctement parsés
-- les champs requis (`id`, `namespace`, `tasks`) sont présents
-- aucun ID de flow n'est dupliqué
-- aucun identifiant en dur n'apparaît dans les définitions de flows
-- tous les tests Python passent
-
-Cette étape doit réussir avant toute fusion dans `main`.
+> **Un merge dans `main` ne déclenche pas de déploiement.** Le déploiement prod nécessite une promotion explicite vers `prod`.
 
 ---
 
-## CD — Déploiement (`deploy.yml`)
+## CI — `.github/workflows/ci.yml`
 
-### Déclencheurs
+S'exécute sur chaque pull request et push vers `main`.
 
-- **Push sur `prod`** — déploiement automatique à chaque merge ou push.
-- **Dispatch manuel** — déclenché via l'interface GitHub Actions (`workflow_dispatch`).
+### Job 1 : `lint-and-test` (ubuntu-latest)
 
-Le déploiement n'est **pas** déclenché sur `main`.
+Checks statiques, sans serveur Kestra :
+
+1. **yamllint** — syntaxe YAML, indentation, longueur de ligne sur `10-flows/prod/`
+2. **SQL lint** — vérifie que les fichiers dans `140-sql/queries/` sont lisibles
+3. **Flow scripts** — vérifie la syntaxe Python (`py_compile`) des scripts dans `100-scripts_mlops/` (hors `ci/` et `deploy/`)
+4. **check_flows.py** — validation custom :
+   - champs requis (`id`, `namespace`, `tasks`)
+   - namespace = `projet713`
+   - pas de flow IDs dupliqués
+   - références subflow résolues
+   - références `read('...')` pointent vers des fichiers SQL existants
+   - clés `kv('...')` dans l'ensemble connu (chargé depuis `kestra_kv_keys.yaml`)
+   - pas de secrets hardcodés
+5. **pytest** — tests unitaires et intégration (`130-tests/`)
+
+### Job 2 : `validate-kestra` (`[self-hosted, dev]`)
+
+Validation serveur via `kestra-io/validate-action` :
+
+- S'exécute **après** `lint-and-test`
+- Valide les flows contre l'API Kestra DEV (`http://localhost:8082` sur VM 705)
+- Utilise le runner `[self-hosted, dev]` — la CI ne touche jamais au serveur prod
+
+---
+
+## CD — `.github/workflows/deploy.yml`
+
+Déploie sur Kestra prod quand du code est **promu sur la branche `prod`**.
+
+### Déclenchement
+
+- `push` vers `prod` avec filtre `paths` sur `10-flows/prod/**`, `140-sql/queries/**` et `100-scripts_mlops/**` (hors `ci/`, `deploy/`)
+- `workflow_dispatch` pour déclenchement manuel
 
 ### Runner
 
-Le workflow s'exécute sur un **runner GitHub Actions self-hosted** installé sur la VM de production. Cela permet au workflow d'appeler l'API Kestra en `localhost` sans l'exposer sur Internet.
+Runner `[self-hosted, prod]` sur la VM de production (713). Kestra est accessible en `http://localhost:30082`.
 
-### Séquence de déploiement
+### Séquence
 
-1. GitHub détecte un push sur `prod` (ou un déclenchement manuel)
-2. Le job `deploy` démarre sur le runner self-hosted
-3. Le dépôt est cloné (`actions/checkout@v4`)
-4. La branche, le commit et le hostname sont loggés pour traçabilité
-5. `100-scripts_mlops/deploy/deploy_flows.sh` est exécuté
-6. Le script valide chaque flow via l'API Kestra, puis le met à jour
+1. **Checkout** avec `fetch-depth: 2` (pour permettre le rollback)
+2. **Contexte** — affiche branche, commit, hostname, date, namespace, serveur
+3. **Deploy SQL** — namespace files via `kestra-io/deploy-action`
+4. **Validate flows** — via `kestra-io/validate-action`
+5. **Deploy flows** — via `kestra-io/deploy-action` (`delete: false`)
+6. **Smoke tests** :
+   - les 5 flows existent via API
+   - tous les namespace files SQL versionnés dans Git existent
+   - les clés KV critiques (`PG_JDBC`, `MQTT_SERVER`, `MLFLOW_TRACKING_URI`) sont accessibles
+7. **Notification Discord** (succès)
+8. **Rollback** en cas d'échec — redéploie les fichiers du commit précédent
+9. **Notification Discord** (échec + rollback)
 
-Si une étape échoue, le workflow s'arrête immédiatement.
+### Ordre important
 
----
+Le SQL (namespace files) doit être déployé **avant** les flows, car `mqtt_linky_gold` fait `read('queries/linky_gold.sql')`.
 
-## Script de déploiement (`deploy_flows.sh`)
+### Garanties de déploiement non destructif
 
-Situé dans `100-scripts_mlops/deploy/deploy_flows.sh`.
+Le pipeline CD est conçu pour être **conservatif** :
 
-Le script itère sur tous les fichiers `.yaml` / `.yml` du répertoire de flows et, pour chaque flow :
+- **Flows** : `delete: false` garantit que les flows déjà présents sur Kestra mais absents du repo Git ne sont **pas supprimés**. Seuls les flows versionnés dans Git sont créés ou mis à jour.
+- **Namespace files (SQL)** : `kestra-io/deploy-action` avec `resource: namespace_file` crée ou met à jour les fichiers présents dans Git. Les namespace files déjà sur Kestra mais absents du dépôt ne sont **pas affectés**.
+- **Flow scripts (Python)** : les scripts dans `100-scripts_mlops/` (hors `ci/` et `deploy/`) sont vérifiés en CI et restaurés en rollback. Ils s'exécutent directement sur la VM via les volumes montés dans Kestra — aucun déploiement API n'est nécessaire, le `git checkout` suffit.
+- **Rollback** : en cas d'échec, le script `rollback_prod.sh` utilise `git ls-tree` + `git show` pour énumérer et restaurer **tous** les fichiers qui existaient à `HEAD~1`, y compris les fichiers **supprimés** entre les deux commits (ce que `git checkout HEAD~1 -- <dir>` ne gère pas). Seules les ressources versionnées dans Git (flows + SQL + scripts) sont re-déployées. Le rollback ne supprime rien.
 
-1. **Valide** le flow via `POST /api/v1/main/flows/validate`
-2. **Déploie** le flow via `PUT /api/v1/main/flows/{namespace}/{id}`
-
-### Variables d'environnement
-
-| Variable | Description | Défaut |
-|----------|-------------|--------|
-| `KESTRA_URL` | URL de base de l'API Kestra | `http://localhost:8082` |
-| `FLOW_DIR` | Répertoire contenant les fichiers YAML des flows | `10-flows` |
-| `KESTRA_ADMIN_USER` | Nom d'utilisateur de l'API Kestra | _(requis)_ |
-| `KESTRA_ADMIN_PASS` | Mot de passe de l'API Kestra | _(requis)_ |
-
-Les identifiants sont fournis via les secrets du dépôt GitHub — ils ne sont jamais codés en dur.
-
-Le script utilise `set -euo pipefail` : toute erreur (validation échouée, problème réseau, mauvaise réponse) provoque un arrêt immédiat.
+> **Principe** : Git est la source de vérité pour les ressources qu'il gère, mais le déploiement ne touche jamais aux ressources non gérées par Git.
 
 ---
 
-## Secrets
+## Secrets GitHub requis
 
-Les secrets suivants doivent être configurés dans les paramètres du dépôt GitHub :
-
-| Secret | Utilisé par |
-|--------|-------------|
-| `KESTRA_ADMIN_USER` | `deploy.yml` → `deploy_flows.sh` |
-| `KESTRA_ADMIN_PASS` | `deploy.yml` → `deploy_flows.sh` |
+| Secret | Usage | Obligatoire |
+|--------|-------|-------------|
+| `KESTRA_ADMIN_USER` | Authentification API Kestra (CI + CD) | ✅ |
+| `KESTRA_ADMIN_PASS` | Authentification API Kestra (CI + CD) | ✅ |
+| `DISCORD_WEBHOOK_URL` | Notifications Discord (CD) | Recommandé |
 
 ---
 
-## Workflow de développement
+## Artifacts versionnés du pipeline
+
+Le pipeline CI/CD gère trois types d'artifacts :
+
+| Type | Répertoire | Déployé via | Rollback |
+|------|-----------|-------------|----------|
+| **Flows Kestra** | `10-flows/prod/` | `kestra-io/deploy-action` (API) | `git ls-tree` + API PUT par flow |
+| **Namespace files SQL** | `140-sql/queries/` | `kestra-io/deploy-action` (API) | `git ls-tree` + API POST par fichier |
+| **Flow scripts Python** | `100-scripts_mlops/` | `git checkout` (sur la VM) | `git ls-tree` + `git show HEAD~1` |
+
+**Exclusions** : les répertoires `100-scripts_mlops/ci/` et `100-scripts_mlops/deploy/` contiennent du code interne au CI/CD. Ils ne sont jamais inclus dans la validation des scripts flows, le rollback, ni le déploiement.
+
+---
+
+## Configuration des clés KV
+
+Les clés Kestra KV attendues sont définies dans **`kestra_kv_keys.yaml`** à la racine du repo (single source of truth). `check_flows.py` charge ce fichier en CI pour vérifier que les `kv('...')` référencés dans les flows correspondent à des clés connues.
+
+Pour ajouter une nouvelle clé KV : l'ajouter dans `kestra_kv_keys.yaml` et commiter.
+
+---
+
+## Script legacy : `deploy_flows.sh`
+
+Le script `100-scripts_mlops/deploy/deploy_flows.sh` est conservé comme outil de **débogage manuel / fallback d'urgence** uniquement. Il n'est plus utilisé dans les workflows CI/CD.
+
+---
+
+## Runners
+
+| Runner | Machine | Usage |
+|--------|---------|-------|
+| `ubuntu-latest` | GitHub-hosted | Checks statiques CI (lint, tests) |
+| `[self-hosted, dev]` | VM dev 705 | Validation Kestra CI |
+| `[self-hosted, prod]` | VM prod 713 | Déploiement CD |
+
+---
+
+## Flux de travail recommandé
 
 ```
-branche feature ──► PR vers main ──► CI valide ──► merge dans main ──► merge main → prod ──► CD déploie
+feature → PR vers main → CI → merge → PR main→prod → contrôle + approbation → merge → CD prod
 ```
 
-1. Créer une branche feature depuis `main`
-2. Développer et tester en local (`pytest 130-tests/ -v`)
-3. Ouvrir une pull request vers `main`
-4. La CI exécute la validation — tous les checks doivent passer
-5. Merge dans `main`
-6. Quand prêt pour la production, merge de `main` dans `prod`
-7. Le CD déploie automatiquement les flows mis à jour sur l'instance Kestra de production
+1. Créer une branche feature : `git checkout -b feature/mon-changement`
+2. Modifier les flows, SQL ou scripts
+3. Commiter, pousser, ouvrir une PR vers `main`
+4. La CI s'exécute automatiquement (yamllint, check_flows, pytest, validate-action sur DEV)
+5. Si la CI passe → merge dans `main`
+6. Quand le code est prêt pour la prod, ouvrir une **PR de `main` vers `prod`** via GitHub
+7. Le workflow `protect-prod.yml` vérifie que la source est bien `main`
+8. Un pair approuve la PR
+9. Merge la PR → le push sur `prod` déclenche le CD
+10. Smoke tests + notification Discord
+
+> **Ne jamais** push directement sur `prod`. Toujours passer par une PR depuis `main`.
+
+---
+
+## Recommandations GitHub — Branch Protection
+
+### Branche `main`
+
+- ✅ **Require a pull request before merging** — pas de push direct
+- ✅ **Require status checks to pass** — `Lint YAML + Tests unitaires` + `Validate flows on Kestra DEV`
+- ✅ **Require branches to be up to date before merging** — évite les conflits
+
+### Branche `prod`
+
+- ✅ **Require a pull request before merging** — pas de push direct
+- ✅ **Require status checks to pass** — `Verify PR source is main` (workflow `protect-prod.yml`)
+- ✅ **Required approvals** — au moins 1 approbation
+- ✅ **Block force pushes** — protège l'historique prod
+
+> Procédure détaillée de configuration : voir `tmp/manual_github_setup_prod_protection.md`
+
+---
+
+## À venir (hors scope actuel)
+
+- Tests et déploiement de la RestAPI FastAPI (`50-docker/api/`)
+- Tests et déploiement de la webapp Streamlit (`50-docker/webapp/`)
+- Intégration MLflow dans la CI (validation modèles)

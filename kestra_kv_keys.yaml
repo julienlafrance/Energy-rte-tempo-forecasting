@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────────
+# Kestra KV keys contract — single source of truth
+# ─────────────────────────────────────────────────────────────────
+# This file lists all expected KV keys used by Kestra flows in
+# the projet713 namespace. It is loaded by check_flows.py during
+# CI to warn about unknown kv('...') references.
+#
+# To add a new KV key: append it to the list below and commit.
+# ─────────────────────────────────────────────────────────────────
+
+kv_keys:
+  # ── PostgreSQL ──
+  - PG_HOST
+  - PG_DB
+  - PG_USER
+  - PG_PASS
+  - PG_JDBC
+
+  # ── S3 / MinIO ──
+  - S3_ACCESS_KEY
+  - S3_SECRET_KEY
+  - S3_REGION
+  - S3_BUCKET
+  - S3_ENDPOINT
+
+  # ── MQTT ──
+  - MQTT_SERVER
+  - MQTT_CLIENT_ID
+  - MQTT_USER
+  - MQTT_PASS
+
+  # ── MLflow ──
+  - MLFLOW_TRACKING_URI
+
+  # ── Notifications ──
+  - DISCORD_WEBHOOK_URL

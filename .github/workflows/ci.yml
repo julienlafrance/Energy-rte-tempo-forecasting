@@ -1,4 +1,4 @@
-name: validate
+name: ci
 
 on:
   pull_request:
@@ -6,9 +6,16 @@ on:
   push:
     branches: [main]
 
+env:
+  FLOWS_DIR: 10-flows/prod
+  SQL_DIR: 140-sql
+  SCRIPTS_DIR: 100-scripts_mlops
+  KESTRA_DEV_SERVER: http://localhost:8082
+
 jobs:
-  validate:
-    name: Validate flows & tests
+  # ─── Job 1 : Static checks (no Kestra server needed) ──────────────
+  lint-and-test:
+    name: Lint YAML + Tests unitaires
     runs-on: ubuntu-latest
 
     steps:
@@ -19,13 +26,62 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.11
 
       - name: Install CI dependencies
         run: uv sync --extra ci
 
-      - name: Check Kestra flows
-        run: uv run python 100-scripts_mlops/ci/check_flows.py
+      - name: Lint YAML flows
+        run: |
+          uv pip install yamllint --system
+          yamllint -d '{extends: default, rules: {line-length: {max: 200}, truthy: disable, comments-indentation: disable}}' \
+            "$FLOWS_DIR/"
 
-      - name: Run tests
+      - name: Check SQL files readable
+        run: |
+          echo "Checking SQL files in $SQL_DIR/queries/ ..."
+          for f in $SQL_DIR/queries/*.sql; do
+            python3 -c "open('$f').read()" || { echo "❌ Cannot read $f"; exit 1; }
+            echo "  ✓ $f"
+          done
+
+      - name: Check flow scripts (syntax)
+        run: |
+          echo "Checking Python scripts in $SCRIPTS_DIR/ (excluding ci/, deploy/) ..."
+          FOUND=0
+          for f in $(find "$SCRIPTS_DIR/" -name '*.py' \
+                    -not -path "$SCRIPTS_DIR/ci/*" \
+                    -not -path "$SCRIPTS_DIR/deploy/*" \
+                    -not -path '*/__pycache__/*' | sort); do
+            python3 -m py_compile "$f" || { echo "❌ Syntax error in $f"; exit 1; }
+            echo "  ✓ $f"
+            FOUND=$((FOUND + 1))
+          done
+          echo "$FOUND flow script(s) validated."
+
+      - name: Validate flows (check_flows.py)
+        run: uv run python 100-scripts_mlops/ci/check_flows.py "$FLOWS_DIR"
+
+      - name: Run unit tests
         run: uv run pytest 130-tests/ -v
+
+  # ─── Job 2 : Kestra server validation (self-hosted DEV runner) ────
+  # Validates flows against the Kestra DEV server (VM 705).
+  # Does NOT touch production. CI never deploys.
+  validate-kestra:
+    name: Validate flows on Kestra DEV
+    needs: lint-and-test
+    runs-on: [self-hosted, dev]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate flows against Kestra
+        uses: kestra-io/validate-action@master
+        with:
+          directory: ./${{ env.FLOWS_DIR }}
+          resource: flow
+          server: ${{ env.KESTRA_DEV_SERVER }}
+          user: ${{ secrets.KESTRA_ADMIN_USER }}
+          password: ${{ secrets.KESTRA_ADMIN_PASS }}

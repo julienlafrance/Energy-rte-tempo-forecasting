@@ -1,6 +1,7 @@
 # Flows Kestra — Documentation
 
-Tous les flows s'exécutent sous le namespace `projet705`.
+Tous les flows s'exécutent sous le namespace `projet713`.
+Les fichiers sources sont dans `10-flows/prod/`.
 
 ---
 
@@ -17,7 +18,6 @@ Point d'entrée du pipeline de données. Écoute le broker MQTT pour les relevé
 1. **insert_bronze** — insère la métrique brute et sa valeur dans `raw.linky` (couche Bronze)
 2. **downstream** (parallèle) :
    - appelle `mqtt_linky_silver` pour traiter les données en Silver
-   - appelle `elastic_linky_realtime` pour indexer les données dans Elasticsearch (tableaux de bord temps réel)
 
 Le topic MQTT est parsé pour extraire le nom de la métrique en supprimant le préfixe `linky/sensor/lixee_zlinky_tic_` et le suffixe `/state`.
 

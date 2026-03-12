@@ -9,6 +9,8 @@ Checks:
   - Subflow references resolve to known flow IDs
   - No hardcoded credentials (passwords, secrets in plain text)
   - Consistent namespace convention
+  - read() references resolve to existing SQL files in 140-sql/queries/
+  - KV keys referenced via kv('...') are in the known set
 
 Usage:
   python 100-scripts_mlops/ci/check_flows.py [flows_dir]
@@ -24,11 +26,43 @@ DEFAULT_FLOWS_DIR = "10-flows/prod"
 REQUIRED_FIELDS = {"id", "namespace"}
 EXPECTED_NAMESPACE = "projet713"
 
+SQL_BASE_DIR = Path("140-sql")
+
+# Path to the KV keys contract file (single source of truth)
+KV_KEYS_CONFIG = Path("kestra_kv_keys.yaml")
+
+
+def load_kv_keys(config_path: Path = KV_KEYS_CONFIG) -> set[str]:
+    """Load known KV keys from the versioned config file."""
+    if not config_path.exists():
+        print(f"ERROR: KV config file not found: {config_path}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        print(f"ERROR: invalid YAML in {config_path}: {e}", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(data, dict) or "kv_keys" not in data:
+        print(f"ERROR: {config_path} must contain a 'kv_keys' list", file=sys.stderr)
+        sys.exit(1)
+    keys = data["kv_keys"]
+    if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+        print(f"ERROR: 'kv_keys' in {config_path} must be a list of strings", file=sys.stderr)
+        sys.exit(1)
+    return set(keys)
+
 # Patterns that indicate hardcoded secrets (case-insensitive)
 HARDCODED_SECRET_PATTERNS = [
     re.compile(r'password:\s*["\']?(?!.*\{\{)(?!.*kv\()[A-Za-z0-9]', re.IGNORECASE),
     re.compile(r'secret:\s*["\']?(?!.*\{\{)(?!.*kv\()[A-Za-z0-9]', re.IGNORECASE),
 ]
+
+# Pattern to extract read('...') references
+READ_PATTERN = re.compile(r"read\('([^']+)'\)")
+
+# Pattern to extract kv('...') references
+KV_PATTERN = re.compile(r"kv\('([^']+)'\)")
 
 
 def find_flow_files(base: Path) -> list[Path]:
@@ -75,8 +109,10 @@ def check_hardcoded_secrets(path: Path) -> list[str]:
     return errors
 
 
-def validate_flows(flows_dir: Path) -> tuple[list[str], list[str]]:
+def validate_flows(flows_dir: Path, known_kv_keys: set[str] | None = None) -> tuple[list[str], list[str]]:
     """Validate all flows. Returns (errors, warnings)."""
+    if known_kv_keys is None:
+        known_kv_keys = load_kv_keys()
     errors = []
     warnings = []
     files = find_flow_files(flows_dir)
@@ -127,6 +163,20 @@ def validate_flows(flows_dir: Path) -> tuple[list[str], list[str]]:
 
         # Collect subflow references
         subflow_refs.extend((rel, ref) for ref in collect_subflow_refs(data))
+
+        # Check read() references against SQL files
+        text = path.read_text()
+        for match in READ_PATTERN.finditer(text):
+            ref_path = match.group(1)
+            resolved = SQL_BASE_DIR / ref_path
+            if not resolved.exists():
+                errors.append(f"{prefix}: read('{ref_path}') — file not found at {resolved}")
+
+        # Check KV key references
+        for match in KV_PATTERN.finditer(text):
+            kv_key = match.group(1)
+            if kv_key not in known_kv_keys:
+                warnings.append(f"{prefix}: kv('{kv_key}') — key not in known set")
 
         # Hardcoded secrets (warn, don't fail)
         for secret_warn in check_hardcoded_secrets(path):

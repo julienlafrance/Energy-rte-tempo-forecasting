@@ -1,47 +1,159 @@
 name: deploy-prod
 
+# ─── CD Production ───────────────────────────────────────────────
+# Triggered when code is promoted to the `prod` branch, or manually.
+# `main` is the integration branch (validated by CI).
+# `prod` is the production branch (deployed by this workflow).
 on:
   push:
-    branches: [main]
+    branches: [prod]
     paths:
       - '10-flows/prod/**'
       - '140-sql/queries/**'
+      - '100-scripts_mlops/**'
+      - '!100-scripts_mlops/ci/**'
+      - '!100-scripts_mlops/deploy/**'
   workflow_dispatch:
+
+env:
+  KESTRA_NAMESPACE: projet713
+  KESTRA_SERVER: http://localhost:30082
+  FLOWS_DIR: 10-flows/prod
+  SQL_DIR: 140-sql
+  SCRIPTS_DIR: 100-scripts_mlops
 
 jobs:
   deploy:
-    name: Deploy flows to production
-    runs-on: [self-hosted]
+    name: Deploy to production
+    runs-on: [self-hosted, prod]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
+      - name: Print deployment context
+        run: |
+          echo "──────────────────────────────────────"
+          echo "Branch:    $GITHUB_REF_NAME"
+          echo "Commit:    $GITHUB_SHA"
+          echo "Runner:    $(hostname)"
+          echo "Date:      $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Namespace: $KESTRA_NAMESPACE"
+          echo "Server:    $KESTRA_SERVER"
+          echo "──────────────────────────────────────"
+
+      # ─── Deploy namespace files BEFORE flows ───────────────────────
+      # Non-destructive: only creates/updates files present in Git.
+      # Files already on Kestra but absent from Git are left untouched.
       - name: Deploy namespace files (SQL)
         uses: kestra-io/deploy-action@master
         with:
-          namespace: projet713
-          directory: ./140-sql
+          namespace: ${{ env.KESTRA_NAMESPACE }}
+          directory: ./${{ env.SQL_DIR }}
           resource: namespace_file
-          server: http://localhost:30082
+          server: ${{ env.KESTRA_SERVER }}
           user: ${{ secrets.KESTRA_ADMIN_USER }}
           password: ${{ secrets.KESTRA_ADMIN_PASS }}
 
+      # ─── Validate flows ────────────────────────────────────────────
       - name: Validate flows
         uses: kestra-io/validate-action@master
         with:
-          directory: ./10-flows/prod
+          directory: ./${{ env.FLOWS_DIR }}
           resource: flow
-          server: http://localhost:30082
+          server: ${{ env.KESTRA_SERVER }}
           user: ${{ secrets.KESTRA_ADMIN_USER }}
           password: ${{ secrets.KESTRA_ADMIN_PASS }}
 
+      # ─── Deploy flows ──────────────────────────────────────────────
+      # Non-destructive: delete=false ensures flows present on Kestra
+      # but absent from Git are NOT removed.
       - name: Deploy flows
         uses: kestra-io/deploy-action@master
         with:
-          namespace: projet713
-          directory: ./10-flows/prod
+          namespace: ${{ env.KESTRA_NAMESPACE }}
+          directory: ./${{ env.FLOWS_DIR }}
           resource: flow
-          server: http://localhost:30082
+          server: ${{ env.KESTRA_SERVER }}
           user: ${{ secrets.KESTRA_ADMIN_USER }}
           password: ${{ secrets.KESTRA_ADMIN_PASS }}
           delete: false
+
+      # ─── Smoke tests ───────────────────────────────────────────────
+      - name: Smoke test — verify flows exist
+        run: |
+          EXPECTED="mqtt_linky_ingest mqtt_linky_silver mqtt_linky_gold mlops_train_forecast mlops_linky_forecast_3d"
+          for flow in $EXPECTED; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -u "${{ secrets.KESTRA_ADMIN_USER }}:${{ secrets.KESTRA_ADMIN_PASS }}" \
+              "$KESTRA_SERVER/api/v1/main/flows/$KESTRA_NAMESPACE/$flow")
+            if [ "$STATUS" != "200" ]; then
+              echo "❌ Flow $flow not found (HTTP $STATUS)"
+              exit 1
+            fi
+            echo "✅ $flow exists"
+          done
+
+      - name: Smoke test — verify namespace files
+        run: |
+          # Verify every SQL file tracked in Git exists as a namespace file
+          for sql_file in $SQL_DIR/queries/*.sql; do
+            [ -f "$sql_file" ] || continue
+            REL_PATH="queries/$(basename "$sql_file")"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -u "${{ secrets.KESTRA_ADMIN_USER }}:${{ secrets.KESTRA_ADMIN_PASS }}" \
+              "$KESTRA_SERVER/api/v1/main/namespaces/$KESTRA_NAMESPACE/files?path=$REL_PATH")
+            if [ "$STATUS" != "200" ]; then
+              echo "❌ Namespace file $REL_PATH not found"
+              exit 1
+            fi
+            echo "✅ $REL_PATH exists"
+          done
+
+      - name: Smoke test — verify critical KV keys
+        run: |
+          for key in PG_JDBC MQTT_SERVER MLFLOW_TRACKING_URI; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -u "${{ secrets.KESTRA_ADMIN_USER }}:${{ secrets.KESTRA_ADMIN_PASS }}" \
+              "$KESTRA_SERVER/api/v1/main/namespaces/$KESTRA_NAMESPACE/kv/$key")
+            if [ "$STATUS" != "200" ]; then
+              echo "⚠️  KV key $key not accessible (HTTP $STATUS)"
+            else
+              echo "✅ KV $key accessible"
+            fi
+          done
+
+      # ─── Notification: success ─────────────────────────────────────
+      - name: Notify Discord — success
+        if: success() && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"✅ Deploy PROD — Succès\",\"description\":\"Commit \`${{ github.sha }}\` déployé sur namespace $KESTRA_NAMESPACE.\",\"color\":3066993}]}" || true
+
+      # ─── Rollback on failure ───────────────────────────────────────
+      # Uses git ls-tree + git show to enumerate and restore ALL files
+      # from HEAD~1, including files deleted between commits (which
+      # plain `git checkout HEAD~1 -- <dir>` would miss).
+      # Non-destructive: only re-deploys Git-tracked resources.
+      - name: Rollback on failure
+        if: failure()
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+        run: |
+          echo "⚠️  Deployment failed — rolling back to previous commit"
+          bash 100-scripts_mlops/deploy/rollback_prod.sh
+
+      - name: Notify Discord — failure
+        if: failure() && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"❌ Deploy PROD — ÉCHEC + ROLLBACK\",\"description\":\"Commit \`${{ github.sha }}\` a échoué. Rollback effectué.\",\"color\":15158332}]}" || true
