@@ -58,3 +58,5 @@ tmp/
 160-helm/
 90-data/
 rte/
+actions-runner/
+160-helm-old/
