@@ -23,7 +23,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FLOWS_DIR = REPO_ROOT / cf.DEFAULT_FLOWS_DIR
 
 EXPECTED_FLOW_IDS = {
-    "elastic_linky_realtime",
     "mlops_linky_forecast_3d",
     "mlops_train_forecast",
     "mqtt_linky_gold",
@@ -51,7 +50,7 @@ class TestYAMLSyntax:
     def test_valid_yaml(self, flows_dir):
         _write(flows_dir / "ok.yaml", """\
             id: my_flow
-            namespace: projet705
+            namespace: projet713
             tasks:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
@@ -70,7 +69,7 @@ class TestYAMLSyntax:
 class TestRequiredFields:
     def test_missing_id(self, flows_dir):
         _write(flows_dir / "no_id.yaml", """\
-            namespace: projet705
+            namespace: projet713
             tasks:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
@@ -91,7 +90,7 @@ class TestRequiredFields:
     def test_missing_tasks(self, flows_dir):
         _write(flows_dir / "no_tasks.yaml", """\
             id: my_flow
-            namespace: projet705
+            namespace: projet713
         """)
         errors, _ = cf.validate_flows(flows_dir.parent)
         assert any("missing 'tasks'" in e for e in errors)
@@ -104,7 +103,7 @@ class TestDuplicateIDs:
         for name in ("a.yaml", "b.yaml"):
             _write(flows_dir / name, """\
                 id: same_id
-                namespace: projet705
+                namespace: projet713
                 tasks:
                   - id: step1
                     type: io.kestra.plugin.core.log.Log
@@ -134,16 +133,16 @@ class TestSubflowRefs:
     def test_valid_subflow_ref(self, flows_dir):
         _write(flows_dir / "parent.yaml", """\
             id: parent_flow
-            namespace: projet705
+            namespace: projet713
             tasks:
               - id: call_child
                 type: io.kestra.plugin.core.flow.Subflow
-                namespace: projet705
+                namespace: projet713
                 flowId: child_flow
         """)
         _write(flows_dir / "child.yaml", """\
             id: child_flow
-            namespace: projet705
+            namespace: projet713
             tasks:
               - id: step1
                 type: io.kestra.plugin.core.log.Log
@@ -154,11 +153,11 @@ class TestSubflowRefs:
     def test_broken_subflow_ref(self, flows_dir):
         _write(flows_dir / "parent.yaml", """\
             id: parent_flow
-            namespace: projet705
+            namespace: projet713
             tasks:
               - id: call_missing
                 type: io.kestra.plugin.core.flow.Subflow
-                namespace: projet705
+                namespace: projet713
                 flowId: does_not_exist
         """)
         errors, _ = cf.validate_flows(flows_dir.parent)
@@ -168,11 +167,11 @@ class TestSubflowRefs:
         """Subflow refs using {{ }} are not statically checked."""
         _write(flows_dir / "dynamic.yaml", """\
             id: dyn_flow
-            namespace: projet705
+            namespace: projet713
             tasks:
               - id: call_dyn
                 type: io.kestra.plugin.core.flow.Subflow
-                namespace: projet705
+                namespace: projet713
                 flowId: "{{ inputs.target }}"
         """)
         errors, _ = cf.validate_flows(flows_dir.parent)

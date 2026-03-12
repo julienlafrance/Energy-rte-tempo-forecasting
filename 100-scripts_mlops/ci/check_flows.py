@@ -20,9 +20,9 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_FLOWS_DIR = "10-flows"
+DEFAULT_FLOWS_DIR = "10-flows/prod"
 REQUIRED_FIELDS = {"id", "namespace"}
-EXPECTED_NAMESPACE = "projet705"
+EXPECTED_NAMESPACE = "projet713"
 
 # Patterns that indicate hardcoded secrets (case-insensitive)
 HARDCODED_SECRET_PATTERNS = [
