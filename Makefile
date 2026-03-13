@@ -17,9 +17,12 @@ fix: ## Auto-fix formatting (trailing whitespace, end-of-file)
 test: ## Run pytest
 	uv run pytest 130-tests/ -v
 
+test-yaml: ## Lint YAML flows (same check as CI)
+	uv run yamllint -d '{extends: default, rules: {line-length: {max: 200}, truthy: disable, comments-indentation: disable}}' 10-flows/prod/
+
 check-flows: ## Validate Kestra flows
 	uv run python 95-ci-cd/ci/check_flows.py
 
-check: check-flows test pre-commit ## Run all checks (flows + tests + pre-commit)
+check: test-yaml check-flows test pre-commit ## Run all checks (yaml + flows + tests + pre-commit)
 
-.PHONY: help install pre-commit fix test check-flows check
+.PHONY: help install pre-commit fix test test-yaml check-flows check

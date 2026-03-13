@@ -1,38 +1,39 @@
+---
 id: mqtt_linky_ingest
 namespace: projet713
 labels:
   env: "prod"
   system.readOnly: "true"
 tasks:
-- id: insert_bronze
-  type: io.kestra.plugin.jdbc.postgresql.Query
-  sql: |
-    INSERT INTO raw.linky (metric, value)
-    VALUES (
-      '{{ trigger.topic | replace({"linky/sensor/lixee_zlinky_tic_": "", "/state": ""}) }}',
-      {{ trigger.payload }}
-    )
-- id: call_silver
-  type: io.kestra.plugin.core.flow.Subflow
-  namespace: projet713
-  flowId: mqtt_linky_silver
-  inputs:
-    metric: "{{ trigger.topic | replace({\"linky/sensor/lixee_zlinky_tic_\": \"\", \"/state\": \"\"}) }}"
-    payload: "{{ trigger.payload }}"
-  wait: false
+  - id: insert_bronze
+    type: io.kestra.plugin.jdbc.postgresql.Query
+    sql: |
+      INSERT INTO raw.linky (metric, value)
+      VALUES (
+        '{{ trigger.topic | replace({"linky/sensor/lixee_zlinky_tic_": "", "/state": ""}) }}',
+        {{ trigger.payload }}
+      )
+  - id: call_silver
+    type: io.kestra.plugin.core.flow.Subflow
+    namespace: projet713
+    flowId: mqtt_linky_silver
+    inputs:
+      metric: "{{ trigger.topic | replace({\"linky/sensor/lixee_zlinky_tic_\": \"\", \"/state\": \"\"}) }}"
+      payload: "{{ trigger.payload }}"
+    wait: false
 triggers:
-- id: linky_trigger
-  type: io.kestra.plugin.mqtt.RealtimeTrigger
-  server: "{{ kv('MQTT_SERVER') }}"
-  clientId: "{{ kv('MQTT_CLIENT_ID') }}"
-  username: "{{ kv('MQTT_USER') }}"
-  password: "{{ kv('MQTT_PASS') }}"
-  topic:
-  - linky/sensor/+/state
-  serdeType: STRING
+  - id: linky_trigger
+    type: io.kestra.plugin.mqtt.RealtimeTrigger
+    server: "{{ kv('MQTT_SERVER') }}"
+    clientId: "{{ kv('MQTT_CLIENT_ID') }}"
+    username: "{{ kv('MQTT_USER') }}"
+    password: "{{ kv('MQTT_PASS') }}"
+    topic:
+      - linky/sensor/+/state
+    serdeType: STRING
 pluginDefaults:
-- type: io.kestra.plugin.jdbc.postgresql.Query
-  values:
-    url: "{{ kv('PG_JDBC') }}"
-    password: "{{ kv('PG_PASS') }}"
-    username: "{{ kv('PG_USER') }}"
+  - type: io.kestra.plugin.jdbc.postgresql.Query
+    values:
+      url: "{{ kv('PG_JDBC') }}"
+      password: "{{ kv('PG_PASS') }}"
+      username: "{{ kv('PG_USER') }}"

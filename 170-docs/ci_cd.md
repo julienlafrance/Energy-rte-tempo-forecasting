@@ -104,9 +104,9 @@ Runner `[self-hosted, dev]` sur la VM DEV (705). Kestra DEV est accessible en `h
 
 ### Séquence
 
-1. **Checkout** du dépôt
+1. **Checkout** du dépôt — en mode `workflow_run`, le checkout cible explicitement `github.event.workflow_run.head_sha` (le SHA exact validé par la CI). En mode `workflow_dispatch`, le comportement par défaut (`github.ref`) est utilisé. Cela garantit que la version synchronisée est toujours celle validée par la CI.
 2. **Contexte** — affiche trigger, branche, commit, hostname, date, cible, namespace, serveur Kestra
-3. **rsync non destructif** (`--archive --compress --verbose`, sans `--delete`) de chaque répertoire versionné vers `~/projet/` :
+3. **rsync non destructif** (`--archive --compress --verbose`, sans `--delete`). La liste des répertoires est lue depuis `repo_structure.yaml` (`sync.directories`) — source de vérité unique. Répertoires synchronisés vers `~/projet/` :
    - `10-flows/prod/` — flows Kestra
    - `140-sql/` — fichiers SQL
    - `100-scripts_mlops/` — scripts métier
@@ -132,6 +132,7 @@ Le SQL (namespace files) doit être déployé **avant** les flows, car certains 
 - **Non destructif** : `rsync` sans `--delete` + `delete: false` pour les flows — les fichiers et flows ajoutés manuellement sur la VM DEV ne sont jamais supprimés
 - **Pas de rollback** : DEV est un environnement d'expérimentation. En cas d'échec, le workflow échoue visiblement mais l'état est conservé pour investigation
 - **Condition** : en mode automatique, le sync ne s'exécute que si la CI a réussi (`workflow_run.conclusion == 'success'`)
+- **Version exacte** : le checkout utilise `head_sha` pour garantir la correspondance entre la version validée par la CI et la version déployée
 
 ---
 

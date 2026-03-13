@@ -168,6 +168,7 @@ dev = [
     { name = "pytest" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "yamllint" },
 ]
 
 [package.metadata]
@@ -187,6 +188,7 @@ requires-dist = [
     { name = "requests", marker = "extra == 'ci'" },
     { name = "requests", marker = "extra == 'dev'" },
     { name = "yamllint", marker = "extra == 'ci'" },
+    { name = "yamllint", marker = "extra == 'dev'" },
 ]
 provides-extras = ["ci", "dev"]
 

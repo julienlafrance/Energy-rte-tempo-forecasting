@@ -25,4 +25,5 @@ dev = [
     "httpx",
     "pydantic",
     "requests",
+    "yamllint",
 ]
