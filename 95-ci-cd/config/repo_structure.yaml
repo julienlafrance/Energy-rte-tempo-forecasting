@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────
+# Repo structure — single source of truth for paths, constants
+# and conventions used across CI/CD scripts and workflows.
+# ─────────────────────────────────────────────────────────────────
+# Consumed by:
+#   - 95-ci-cd/ci/check_flows.py     (CI flow validation)
+#   - 95-ci-cd/deploy/smoke_test_prod.py  (CD Kestra smoke tests)
+#   - 95-ci-cd/deploy/smoke_test_apps.py  (CI DEV + CD PROD app health checks)
+#   - 130-tests/test_config_sync.py  (CI drift detection)
+#
+# Workflow env blocks (ci.yml, deploy.yml, sync-dev.yml)
+# MUST mirror these values.
+# A pytest test enforces the sync automatically.
+# ─────────────────────────────────────────────────────────────────
+
+directories:
+  flows: 10-flows/prod
+  sql: 140-sql
+  scripts: 100-scripts_mlops
+  cicd: 95-ci-cd
+  api: 110-api
+  webapp: 120-webapp
+  tests: 130-tests
+
+kestra:
+  namespace: projet713
+  dev_server: "http://localhost:8082"
+  prod_server: "http://localhost:30082"
+
+# Docker images are built/deployed outside this pipeline (infra team).
+# Kept here for reference and CI build validation only.
+# Canonical Dockerfile locations for CI build-only checks:
+#   API:    50-docker/api/build/  (110-api/ has no Dockerfile)
+#   Webapp: 120-webapp/           (self-contained build context)
+docker:
+  api_image: saraelmountasser/fastapi-mlops
+  webapp_image: saraelmountasser/energy-webapp
+  api_build_context: 50-docker/api/build
+  webapp_build_context: 120-webapp
+
+# Helm charts and infra manifests — validated in CI, applied by infra team.
+infra:
+  charts_dir: 75-infra-prod
+
+sync:
+  target_base_path: /home/dataia25/projet
+  directories:
+    - 10-flows/prod
+    - 140-sql
+    - 100-scripts_mlops
+    - 110-api
+    - 120-webapp
+
+config_files:
+  kv_keys: kestra_kv_keys.yaml
+  smoke_tests: 95-ci-cd/config/deploy_smoke_tests.yaml
+  apps_smoke_tests: 95-ci-cd/config/deploy_apps_smoke_tests.yaml

@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────
+# Smoke test configuration for API & Webapp health checks
+# ─────────────────────────────────────────────────────────────────
+# Used by smoke_test_apps.py to verify that services are healthy.
+#
+# The CI/CD pipeline does NOT build or deploy these services.
+# It only checks their availability:
+#   - CI: DEV environment (Docker Compose on VM 705)
+#   - CD: PROD environment (k3s on VM 713)
+# ─────────────────────────────────────────────────────────────────
+
+dev:
+  endpoints:
+    - name: API
+      url: "http://localhost:8000"
+      health_path: /health
+      required: true
+
+    - name: Webapp
+      url: "http://localhost:8501"
+      health_path: /_stcore/health
+      required: true
+
+prod:
+  endpoints:
+    - name: API
+      url: "http://localhost:30088"
+      health_path: /health
+      required: true
+
+    - name: Webapp
+      url: "http://localhost:30085"
+      health_path: /_stcore/health
+      required: false

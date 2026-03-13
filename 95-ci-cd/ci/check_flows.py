@@ -13,7 +13,7 @@ Checks:
   - KV keys referenced via kv('...') are in the known set
 
 Usage:
-  python 100-scripts_mlops/ci/check_flows.py [flows_dir]
+  python 95-ci-cd/ci/check_flows.py [flows_dir]
 """
 
 import sys
@@ -22,14 +22,20 @@ from pathlib import Path
 
 import yaml
 
-DEFAULT_FLOWS_DIR = "10-flows/prod"
-REQUIRED_FIELDS = {"id", "namespace"}
-EXPECTED_NAMESPACE = "projet713"
+# Import central config loader
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "config"))
+from load_config import load_repo_structure
 
-SQL_BASE_DIR = Path("140-sql")
+_CONF = load_repo_structure()
+
+DEFAULT_FLOWS_DIR = _CONF["directories"]["flows"]
+REQUIRED_FIELDS = {"id", "namespace"}
+EXPECTED_NAMESPACE = _CONF["kestra"]["namespace"]
+
+SQL_BASE_DIR = Path(_CONF["directories"]["sql"])
 
 # Path to the KV keys contract file (single source of truth)
-KV_KEYS_CONFIG = Path("kestra_kv_keys.yaml")
+KV_KEYS_CONFIG = Path(_CONF["config_files"]["kv_keys"])
 
 
 def load_kv_keys(config_path: Path = KV_KEYS_CONFIG) -> set[str]:

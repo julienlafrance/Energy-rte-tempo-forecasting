@@ -7,15 +7,22 @@ on:
     branches: [main]
 
 env:
+  # Source of truth: 95-ci-cd/config/repo_structure.yaml
   FLOWS_DIR: 10-flows/prod
   SQL_DIR: 140-sql
   SCRIPTS_DIR: 100-scripts_mlops
+  API_DIR: 110-api
+  WEBAPP_DIR: 120-webapp
   KESTRA_DEV_SERVER: http://localhost:8082
+  API_BUILD_CTX: 50-docker/api/build
+  INFRA_CHARTS_DIR: 75-infra-prod
 
 jobs:
-  # ─── Job 1 : Static checks (no Kestra server needed) ──────────────
+  # ─── Job 1 : Static validation (no server dependency) ─────────────
+  # Runs on GitHub-hosted runner. Validates code, config, Docker
+  # builds and Helm charts without requiring any live service.
   lint-and-test:
-    name: Lint YAML + Tests unitaires
+    name: Static validation
     runs-on: ubuntu-latest
 
     steps:
@@ -31,9 +38,9 @@ jobs:
       - name: Install CI dependencies
         run: uv sync --extra ci
 
+      # ── Code & config validation ─────────────────────────────────
       - name: Lint YAML flows
         run: |
-          uv pip install yamllint --system
           yamllint -d '{extends: default, rules: {line-length: {max: 200}, truthy: disable, comments-indentation: disable}}' \
             "$FLOWS_DIR/"
 
@@ -47,11 +54,9 @@ jobs:
 
       - name: Check flow scripts (syntax)
         run: |
-          echo "Checking Python scripts in $SCRIPTS_DIR/ (excluding ci/, deploy/) ..."
+          echo "Checking Python scripts in $SCRIPTS_DIR/ ..."
           FOUND=0
           for f in $(find "$SCRIPTS_DIR/" -name '*.py' \
-                    -not -path "$SCRIPTS_DIR/ci/*" \
-                    -not -path "$SCRIPTS_DIR/deploy/*" \
                     -not -path '*/__pycache__/*' | sort); do
             python3 -m py_compile "$f" || { echo "❌ Syntax error in $f"; exit 1; }
             echo "  ✓ $f"
@@ -59,17 +64,64 @@ jobs:
           done
           echo "$FOUND flow script(s) validated."
 
+      - name: Check API source (syntax)
+        run: |
+          echo "Checking Python files in $API_DIR/ ..."
+          FOUND=0
+          for f in $(find "$API_DIR" -name '*.py' -not -path '*/__pycache__/*' | sort); do
+            python3 -m py_compile "$f" || { echo "❌ Syntax error in $f"; exit 1; }
+            echo "  ✓ $f"
+            FOUND=$((FOUND + 1))
+          done
+          echo "$FOUND API file(s) validated."
+
+      - name: Check webapp source (syntax)
+        run: |
+          echo "Checking Python files in $WEBAPP_DIR/ ..."
+          FOUND=0
+          for f in $(find "$WEBAPP_DIR" -name '*.py' -not -path '*/__pycache__/*' | sort); do
+            python3 -m py_compile "$f" || { echo "❌ Syntax error in $f"; exit 1; }
+            echo "  ✓ $f"
+            FOUND=$((FOUND + 1))
+          done
+          echo "$FOUND webapp file(s) validated."
+
       - name: Validate flows (check_flows.py)
-        run: uv run python 100-scripts_mlops/ci/check_flows.py "$FLOWS_DIR"
+        run: uv run python 95-ci-cd/ci/check_flows.py "$FLOWS_DIR"
 
       - name: Run unit tests
         run: uv run pytest 130-tests/ -v
 
-  # ─── Job 2 : Kestra server validation (self-hosted DEV runner) ────
-  # Validates flows against the Kestra DEV server (VM 705).
-  # Does NOT touch production. CI never deploys.
-  validate-kestra:
-    name: Validate flows on Kestra DEV
+      # ── Infrastructure artifact validation ───────────────────────
+      # Build-only — no image is pushed. Validates Dockerfiles and
+      # dependency installation.
+      - name: Build API image (validation only)
+        run: docker build -t energy-api:ci-test "$API_BUILD_CTX"
+
+      - name: Build webapp image (validation only)
+        run: docker build -t energy-webapp:ci-test "$WEBAPP_DIR"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm charts
+        run: |
+          echo "Linting Helm charts in $INFRA_CHARTS_DIR/ ..."
+          FOUND=0
+          for chart in $INFRA_CHARTS_DIR/*/; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              helm lint "$chart"
+              echo "  ✓ $chart"
+              FOUND=$((FOUND + 1))
+            fi
+          done
+          echo "$FOUND chart(s) validated."
+
+  # ─── Job 2 : DEV integration validation (self-hosted DEV runner) ──
+  # Validates components against services already running on the
+  # DEV VM (705). Does NOT deploy anything.
+  validate-dev:
+    name: Validate on DEV
     needs: lint-and-test
     runs-on: [self-hosted, dev]
 
@@ -77,7 +129,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate flows against Kestra
+      - name: Validate flows against Kestra DEV
         uses: kestra-io/validate-action@master
         with:
           directory: ./${{ env.FLOWS_DIR }}
@@ -85,3 +137,8 @@ jobs:
           server: ${{ env.KESTRA_DEV_SERVER }}
           user: ${{ secrets.KESTRA_ADMIN_USER }}
           password: ${{ secrets.KESTRA_ADMIN_PASS }}
+
+      # Health checks on services already deployed in DEV via Docker Compose.
+      # Configuration: 95-ci-cd/config/deploy_apps_smoke_tests.yaml (dev section)
+      - name: Smoke test — DEV app endpoints
+        run: python3 95-ci-cd/deploy/smoke_test_apps.py --env dev

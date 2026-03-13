@@ -169,10 +169,12 @@ Les hooks pre-commit reproduisent les mêmes checks que la CI (validation flows,
 
 ```
 10-flows/          Flows Kestra (DAGs YAML)
+50-docker/         Docker Compose (API, Kestra, MLflow, Postgres, WebApp)
+75-infra-prod/     Charts Helm (K3s)
+95-ci-cd/          Outils CI/CD (check, deploy, config)
 100-scripts_mlops/ Scripts Python ML (train + forecast)
 130-tests/         Tests des flows et déploiement
 170-docs/          Documentation CI/CD
-50-docker/         Docker Compose (API, Kestra, MLflow, Postgres, WebApp)
 img/               Assets visuels
 ```
 

@@ -1,0 +1,20 @@
+# ─────────────────────────────────────────────────────────────────
+# Smoke test configuration for CD production deployments
+# ─────────────────────────────────────────────────────────────────
+# Used by smoke_test_prod.py after deploying to Kestra prod.
+#
+# This is NOT the full KV contract (see kestra_kv_keys.yaml).
+# This file defines only the subset verified post-deployment.
+# ─────────────────────────────────────────────────────────────────
+
+expected_flows:
+  - mqtt_linky_ingest
+  - mqtt_linky_silver
+  - mqtt_linky_gold
+  - mlops_train_forecast
+  - mlops_linky_forecast_3d
+
+critical_kv_keys:
+  - PG_JDBC
+  - MQTT_SERVER
+  - MLFLOW_TRACKING_URI

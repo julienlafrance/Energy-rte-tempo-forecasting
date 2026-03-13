@@ -18,7 +18,7 @@ test: ## Run pytest
 	uv run pytest 130-tests/ -v
 
 check-flows: ## Validate Kestra flows
-	uv run python 100-scripts_mlops/ci/check_flows.py
+	uv run python 95-ci-cd/ci/check_flows.py
 
 check: check-flows test pre-commit ## Run all checks (flows + tests + pre-commit)
 

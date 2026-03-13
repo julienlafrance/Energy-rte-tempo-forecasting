@@ -14,7 +14,7 @@ import yaml
 
 # ── Import check_flows (package name isn't a valid identifier) ───────────────
 
-_ci_path = Path(__file__).resolve().parents[1] / "100-scripts_mlops" / "ci"
+_ci_path = Path(__file__).resolve().parents[1] / "95-ci-cd" / "ci"
 _spec = importlib.util.spec_from_file_location("check_flows", _ci_path / "check_flows.py")
 cf = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cf)

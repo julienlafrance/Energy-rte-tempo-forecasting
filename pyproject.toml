@@ -11,9 +11,18 @@ dependencies = [
 ci = [
     "pytest",
     "pyyaml",
+    "fastapi",
+    "httpx",
+    "pydantic",
+    "requests",
+    "yamllint",
 ]
 dev = [
     "pytest",
     "pyyaml",
     "pre-commit",
+    "fastapi",
+    "httpx",
+    "pydantic",
+    "requests",
 ]

@@ -13,7 +13,7 @@ repos:
     hooks:
       - id: check-flows
         name: Validate Kestra flows
-        entry: uv run python 100-scripts_mlops/ci/check_flows.py
+        entry: uv run python 95-ci-cd/ci/check_flows.py
         language: system
         pass_filenames: false
         files: ^10-flows/.*\.ya?ml$

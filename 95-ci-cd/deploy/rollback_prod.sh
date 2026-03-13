@@ -13,7 +13,7 @@
 #
 # Required env vars:
 #   KESTRA_SERVER, KESTRA_NAMESPACE, KESTRA_USER, KESTRA_PASS
-#   FLOWS_DIR, SQL_DIR, SCRIPTS_DIR
+#   FLOWS_DIR, SQL_DIR, SCRIPTS_DIR, SYNC_TARGET
 # ─────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -21,7 +21,7 @@ PREV="HEAD~1"
 
 # ── Validate prerequisites ──────────────────────────────────────
 for var in KESTRA_SERVER KESTRA_NAMESPACE KESTRA_USER KESTRA_PASS \
-           FLOWS_DIR SQL_DIR SCRIPTS_DIR; do
+           FLOWS_DIR SQL_DIR SCRIPTS_DIR SYNC_TARGET; do
   if [ -z "${!var:-}" ]; then
     echo "❌ Missing required env var: $var"
     exit 1
@@ -80,7 +80,6 @@ echo "── Restoring flow scripts ──"
 SCRIPT_COUNT=0
 for filepath in $(git ls-tree -r --name-only "$PREV" -- "$SCRIPTS_DIR" 2>/dev/null \
                   | grep '\.py$' \
-                  | grep -v -E "^${SCRIPTS_DIR}/(ci|deploy)/" \
                   | grep -v '__pycache__' || true); do
   mkdir -p "$(dirname "$filepath")"
   git show "${PREV}:${filepath}" > "$filepath"
@@ -90,4 +89,24 @@ done
 echo "$SCRIPT_COUNT flow script(s) rolled back."
 echo ""
 
-echo "✅ Rollback complete: $SQL_COUNT SQL, $FLOW_COUNT flows, $SCRIPT_COUNT scripts."
+# ── 4. Re-sync rolled-back files to PROD VM ────────────────────
+# Directory list read from repo_structure.yaml (single source of truth).
+echo "── Re-syncing rolled-back files to PROD VM ──"
+SYNC_DIRS=$(python3 -c "
+import yaml
+cfg = yaml.safe_load(open('95-ci-cd/config/repo_structure.yaml'))
+print(' '.join(cfg['sync']['directories']))
+")
+SYNC_COUNT=0
+for dir in $SYNC_DIRS; do
+  if [ -d "$dir" ]; then
+    mkdir -p "$SYNC_TARGET/$dir"
+    rsync --archive --compress --verbose "$dir/" "$SYNC_TARGET/$dir/"
+    echo "  ⏪ Re-synced $dir → $SYNC_TARGET/$dir"
+    SYNC_COUNT=$((SYNC_COUNT + 1))
+  fi
+done
+echo "$SYNC_COUNT directory(ies) re-synced."
+echo ""
+
+echo "✅ Rollback complete: $SQL_COUNT SQL, $FLOW_COUNT flows, $SCRIPT_COUNT scripts, $SYNC_COUNT synced dirs."

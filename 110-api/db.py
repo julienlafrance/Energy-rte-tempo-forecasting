@@ -15,3 +15,4 @@ def get_connection():
         database=PG_CONFIG["database"],
         user=PG_CONFIG["user"],
         password=PG_CONFIG["password"]
+    )

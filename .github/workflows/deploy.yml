@@ -4,6 +4,11 @@ name: deploy-prod
 # Triggered when code is promoted to the `prod` branch, or manually.
 # `main` is the integration branch (validated by CI).
 # `prod` is the production branch (deployed by this workflow).
+#
+# The entire PROD release is treated as a single unit:
+#   sync → deploy Kestra → smoke tests (Kestra + apps) → rollback on failure
+# This guarantees that any failure triggers a rollback, including
+# app smoke test failures.
 on:
   push:
     branches: [prod]
@@ -11,16 +16,20 @@ on:
       - '10-flows/prod/**'
       - '140-sql/queries/**'
       - '100-scripts_mlops/**'
-      - '!100-scripts_mlops/ci/**'
-      - '!100-scripts_mlops/deploy/**'
+      - '110-api/**'
+      - '120-webapp/**'
   workflow_dispatch:
 
 env:
+  # Source of truth: 95-ci-cd/config/repo_structure.yaml
   KESTRA_NAMESPACE: projet713
   KESTRA_SERVER: http://localhost:30082
+  SYNC_TARGET: /home/dataia25/projet
   FLOWS_DIR: 10-flows/prod
   SQL_DIR: 140-sql
   SCRIPTS_DIR: 100-scripts_mlops
+  API_DIR: 110-api
+  WEBAPP_DIR: 120-webapp
 
 jobs:
   deploy:
@@ -43,6 +52,33 @@ jobs:
           echo "Namespace: $KESTRA_NAMESPACE"
           echo "Server:    $KESTRA_SERVER"
           echo "──────────────────────────────────────"
+
+      # ─── Filesystem sync (non-destructive) ────────────────────────
+      # rsync WITHOUT --delete: updates existing files and adds
+      # missing ones, but never removes files already on the VM.
+      #
+      # The list of directories is read from repo_structure.yaml
+      # (sync.directories) — single source of truth.
+      - name: Sync versioned files to PROD VM
+        run: |
+          echo "── Syncing versioned files to PROD VM ──"
+          SYNC_DIRS=$(python3 -c "
+          import yaml
+          cfg = yaml.safe_load(open('95-ci-cd/config/repo_structure.yaml'))
+          print(' '.join(cfg['sync']['directories']))
+          ")
+          SYNCED=0
+          for dir in $SYNC_DIRS; do
+            if [ -d "$dir" ]; then
+              mkdir -p "$SYNC_TARGET/$dir"
+              rsync --archive --compress --verbose "$dir/" "$SYNC_TARGET/$dir/"
+              echo "  ✓ $dir → $SYNC_TARGET/$dir"
+              SYNCED=$((SYNCED + 1))
+            else
+              echo "  ⚠️  $dir not found in workspace — skipped"
+            fi
+          done
+          echo "$SYNCED directory(ies) synchronized."
 
       # ─── Deploy namespace files BEFORE flows ───────────────────────
       # Non-destructive: only creates/updates files present in Git.
@@ -81,49 +117,21 @@ jobs:
           password: ${{ secrets.KESTRA_ADMIN_PASS }}
           delete: false
 
-      # ─── Smoke tests ───────────────────────────────────────────────
-      - name: Smoke test — verify flows exist
-        run: |
-          EXPECTED="mqtt_linky_ingest mqtt_linky_silver mqtt_linky_gold mlops_train_forecast mlops_linky_forecast_3d"
-          for flow in $EXPECTED; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -u "${{ secrets.KESTRA_ADMIN_USER }}:${{ secrets.KESTRA_ADMIN_PASS }}" \
-              "$KESTRA_SERVER/api/v1/main/flows/$KESTRA_NAMESPACE/$flow")
-            if [ "$STATUS" != "200" ]; then
-              echo "❌ Flow $flow not found (HTTP $STATUS)"
-              exit 1
-            fi
-            echo "✅ $flow exists"
-          done
+      # ─── Smoke tests: Kestra ───────────────────────────────────────
+      # Configuration: 95-ci-cd/config/deploy_smoke_tests.yaml
+      # Script:        95-ci-cd/deploy/smoke_test_prod.py
+      - name: Smoke test — Kestra PROD
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+        run: python3 95-ci-cd/deploy/smoke_test_prod.py
 
-      - name: Smoke test — verify namespace files
-        run: |
-          # Verify every SQL file tracked in Git exists as a namespace file
-          for sql_file in $SQL_DIR/queries/*.sql; do
-            [ -f "$sql_file" ] || continue
-            REL_PATH="queries/$(basename "$sql_file")"
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -u "${{ secrets.KESTRA_ADMIN_USER }}:${{ secrets.KESTRA_ADMIN_PASS }}" \
-              "$KESTRA_SERVER/api/v1/main/namespaces/$KESTRA_NAMESPACE/files?path=$REL_PATH")
-            if [ "$STATUS" != "200" ]; then
-              echo "❌ Namespace file $REL_PATH not found"
-              exit 1
-            fi
-            echo "✅ $REL_PATH exists"
-          done
-
-      - name: Smoke test — verify critical KV keys
-        run: |
-          for key in PG_JDBC MQTT_SERVER MLFLOW_TRACKING_URI; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -u "${{ secrets.KESTRA_ADMIN_USER }}:${{ secrets.KESTRA_ADMIN_PASS }}" \
-              "$KESTRA_SERVER/api/v1/main/namespaces/$KESTRA_NAMESPACE/kv/$key")
-            if [ "$STATUS" != "200" ]; then
-              echo "⚠️  KV key $key not accessible (HTTP $STATUS)"
-            else
-              echo "✅ KV $key accessible"
-            fi
-          done
+      # ─── Smoke tests: API + Webapp ─────────────────────────────────
+      # Verifies that app services are healthy after the release.
+      # If this fails, rollback is triggered (same job).
+      # Configuration: 95-ci-cd/config/deploy_apps_smoke_tests.yaml
+      - name: Smoke test — PROD app endpoints
+        run: python3 95-ci-cd/deploy/smoke_test_apps.py --env prod
 
       # ─── Notification: success ─────────────────────────────────────
       - name: Notify Discord — success
@@ -133,12 +141,13 @@ jobs:
         run: |
           curl -s -X POST "$DISCORD_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{\"embeds\":[{\"title\":\"✅ Deploy PROD — Succès\",\"description\":\"Commit \`${{ github.sha }}\` déployé sur namespace $KESTRA_NAMESPACE.\",\"color\":3066993}]}" || true
+            -d "{\"embeds\":[{\"title\":\"✅ Deploy PROD — Succès\",\"description\":\"Commit \`${{ github.sha }}\` déployé sur namespace $KESTRA_NAMESPACE. Tous les smoke tests passent (Kestra + apps).\",\"color\":3066993}]}" || true
 
       # ─── Rollback on failure ───────────────────────────────────────
+      # Triggered if ANY previous step fails (sync, deploy, or
+      # smoke tests — including app health checks).
       # Uses git ls-tree + git show to enumerate and restore ALL files
-      # from HEAD~1, including files deleted between commits (which
-      # plain `git checkout HEAD~1 -- <dir>` would miss).
+      # from HEAD~1, including files deleted between commits.
       # Non-destructive: only re-deploys Git-tracked resources.
       - name: Rollback on failure
         if: failure()
@@ -147,7 +156,7 @@ jobs:
           KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
         run: |
           echo "⚠️  Deployment failed — rolling back to previous commit"
-          bash 100-scripts_mlops/deploy/rollback_prod.sh
+          bash 95-ci-cd/deploy/rollback_prod.sh
 
       - name: Notify Discord — failure
         if: failure() && env.DISCORD_WEBHOOK_URL != ''

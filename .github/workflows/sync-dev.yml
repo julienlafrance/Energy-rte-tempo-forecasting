@@ -1,0 +1,147 @@
+name: sync-deploy-dev
+
+# ─── Synchronisation + Déploiement DEV ───────────────────────────
+# Non-destructive filesystem sync to the DEV VM, followed by
+# Kestra deployment (SQL namespace files + flows) and smoke tests.
+# Triggered automatically after CI succeeds on main, or manually.
+#
+# When triggered by workflow_run, we checkout the exact commit
+# that CI validated (head_sha) to guarantee version consistency.
+#
+# ⚠️  NO ROLLBACK — DEV is an experimentation environment.
+# If deployment or smoke tests fail, the workflow fails visibly
+# but the state is left in place for investigation.
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Source of truth: 95-ci-cd/config/repo_structure.yaml
+  SYNC_TARGET: /home/dataia25/projet
+  FLOWS_DIR: 10-flows/prod
+  SQL_DIR: 140-sql
+  SCRIPTS_DIR: 100-scripts_mlops
+  API_DIR: 110-api
+  WEBAPP_DIR: 120-webapp
+  KESTRA_NAMESPACE: projet713
+  KESTRA_DEV_SERVER: http://localhost:8082
+
+jobs:
+  sync-and-deploy:
+    name: Sync + Deploy to DEV
+    runs-on: [self-hosted, dev]
+    # Run only on manual dispatch or when the CI workflow succeeded
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      # ─── Checkout the exact commit validated by CI ─────────────
+      # workflow_run: use head_sha (the commit CI validated)
+      # workflow_dispatch: use the default ref (current branch HEAD)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Print sync context
+        run: |
+          echo "──────────────────────────────────────"
+          echo "Trigger:   ${{ github.event_name }}"
+          echo "Branch:    ${{ github.event.workflow_run.head_branch || github.ref_name }}"
+          echo "Commit:    $(git rev-parse HEAD)"
+          echo "Runner:    $(hostname)"
+          echo "Date:      $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Target:    $SYNC_TARGET"
+          echo "Namespace: $KESTRA_NAMESPACE"
+          echo "Server:    $KESTRA_DEV_SERVER"
+          echo "──────────────────────────────────────"
+
+      # ─── Non-destructive filesystem sync ───────────────────────
+      # rsync WITHOUT --delete: updates existing files and adds
+      # missing ones, but never removes files already on the VM.
+      # DEV accepts experimentation — we must not erase files
+      # that may have been added manually on the VM.
+      #
+      # The list of directories is read from repo_structure.yaml
+      # (sync.directories) — single source of truth.
+      - name: Sync versioned files to DEV VM
+        run: |
+          echo "── Syncing versioned files to DEV VM ──"
+          SYNC_DIRS=$(python3 -c "
+          import yaml
+          cfg = yaml.safe_load(open('95-ci-cd/config/repo_structure.yaml'))
+          print(' '.join(cfg['sync']['directories']))
+          ")
+          SYNCED=0
+          for dir in $SYNC_DIRS; do
+            if [ -d "$dir" ]; then
+              mkdir -p "$SYNC_TARGET/$dir"
+              rsync --archive --compress --verbose "$dir/" "$SYNC_TARGET/$dir/"
+              echo "  ✓ $dir → $SYNC_TARGET/$dir"
+              SYNCED=$((SYNCED + 1))
+            else
+              echo "  ⚠️  $dir not found in workspace — skipped"
+            fi
+          done
+          echo ""
+          echo "✅ DEV sync complete — $SYNCED directory(ies) synchronized."
+
+      # ─── Deploy namespace files (SQL) to Kestra DEV ────────────
+      # Non-destructive: only creates/updates files present in Git.
+      # Files already on Kestra DEV but absent from Git are left
+      # untouched.
+      - name: Deploy namespace files (SQL) to Kestra DEV
+        uses: kestra-io/deploy-action@master
+        with:
+          namespace: ${{ env.KESTRA_NAMESPACE }}
+          directory: ./${{ env.SQL_DIR }}
+          resource: namespace_file
+          server: ${{ env.KESTRA_DEV_SERVER }}
+          user: ${{ secrets.KESTRA_ADMIN_USER }}
+          password: ${{ secrets.KESTRA_ADMIN_PASS }}
+
+      # ─── Validate flows against Kestra DEV ─────────────────────
+      - name: Validate flows against Kestra DEV
+        uses: kestra-io/validate-action@master
+        with:
+          directory: ./${{ env.FLOWS_DIR }}
+          resource: flow
+          server: ${{ env.KESTRA_DEV_SERVER }}
+          user: ${{ secrets.KESTRA_ADMIN_USER }}
+          password: ${{ secrets.KESTRA_ADMIN_PASS }}
+
+      # ─── Deploy flows to Kestra DEV ────────────────────────────
+      # Non-destructive: delete=false ensures flows present on
+      # Kestra DEV but absent from Git are NOT removed.
+      - name: Deploy flows to Kestra DEV
+        uses: kestra-io/deploy-action@master
+        with:
+          namespace: ${{ env.KESTRA_NAMESPACE }}
+          directory: ./${{ env.FLOWS_DIR }}
+          resource: flow
+          server: ${{ env.KESTRA_DEV_SERVER }}
+          user: ${{ secrets.KESTRA_ADMIN_USER }}
+          password: ${{ secrets.KESTRA_ADMIN_PASS }}
+          delete: false
+
+      # ─── Smoke tests: Kestra DEV ──────────────────────────────
+      # Reuses the same script and config as PROD smoke tests.
+      # KV keys are checked as warnings (not strict) because DEV
+      # KV provisioning may differ from PROD.
+      - name: Smoke test — Kestra DEV
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+          KESTRA_SERVER: ${{ env.KESTRA_DEV_SERVER }}
+          KESTRA_NAMESPACE: ${{ env.KESTRA_NAMESPACE }}
+        run: python3 95-ci-cd/deploy/smoke_test_prod.py
+
+      # ─── Smoke tests: DEV app endpoints ───────────────────────
+      # Verifies API and Webapp are healthy on the DEV VM.
+      # Configuration: 95-ci-cd/config/deploy_apps_smoke_tests.yaml
+      - name: Smoke test — DEV app endpoints
+        run: python3 95-ci-cd/deploy/smoke_test_apps.py --env dev
