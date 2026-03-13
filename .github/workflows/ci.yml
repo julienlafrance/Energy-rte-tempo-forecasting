@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, debug]
 
 env:
   # Source of truth: 95-ci-cd/config/repo_structure.yaml
@@ -112,10 +112,14 @@ jobs:
           KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
           KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
         run: |
-          kestractl flows validate "./$FLOWS_DIR/" \
-            --host "$KESTRA_DEV_SERVER" \
-            --username "$KESTRA_USER" \
-            --password "$KESTRA_PASS"
+          for f in "$FLOWS_DIR"/*.yaml "$FLOWS_DIR"/*.yml; do
+            [ -f "$f" ] || continue
+            echo "Validating $f"
+            kestractl flows validate "$f" \
+              --host "$KESTRA_DEV_SERVER" \
+              --username "$KESTRA_USER" \
+              --password "$KESTRA_PASS"
+          done
 
       # Health checks on services already deployed in DEV via Docker Compose.
       # Configuration: 95-ci-cd/config/deploy_apps_smoke_tests.yaml (dev section)
