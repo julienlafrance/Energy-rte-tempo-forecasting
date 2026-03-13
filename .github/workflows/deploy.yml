@@ -110,10 +110,14 @@ jobs:
           KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
           KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
         run: |
-          kestractl flows validate "./$FLOWS_DIR/" \
-            --host "$KESTRA_SERVER" \
-            --username "$KESTRA_USER" \
-            --password "$KESTRA_PASS"
+              for f in "$FLOWS_DIR"/*.yaml "$FLOWS_DIR"/*.yml; do
+                [ -f "$f" ] || continue
+                echo "Validating $f"
+                kestractl flows validate "$f" \
+                  --host "$KESTRA_SERVER" \
+                  --username "$KESTRA_USER" \
+                  --password "$KESTRA_PASS"
+              done
 
       # ─── Deploy flows ──────────────────────────────────────────────
       # Non-destructive: --override creates or updates existing flows.
@@ -124,11 +128,15 @@ jobs:
           KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
           KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
         run: |
-          kestractl flows deploy "./$FLOWS_DIR/" \
-            --override \
-            --host "$KESTRA_SERVER" \
-            --username "$KESTRA_USER" \
-            --password "$KESTRA_PASS"
+          for f in "$FLOWS_DIR"/*.yaml "$FLOWS_DIR"/*.yml; do
+            [ -f "$f" ] || continue
+            echo "Deploying $f"
+            kestractl flows deploy "$f" \
+              --override \
+              --host "$KESTRA_SERVER" \
+              --username "$KESTRA_USER" \
+              --password "$KESTRA_PASS"
+          done
 
       # ─── Smoke tests: Kestra ───────────────────────────────────────
       # Configuration: 95-ci-cd/config/deploy_smoke_tests.yaml
