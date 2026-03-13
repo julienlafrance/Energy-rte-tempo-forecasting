@@ -19,9 +19,9 @@ Runner `[self-hosted, prod]` sur la VM de production (713). Kestra est accessibl
 2. Affichage du contexte (branche, commit, hostname, date)
 3. **Sync filesystem** — rsync non destructif (`--archive --compress --verbose`, sans `--delete`) des répertoires versionnés vers `~/projet/` sur la VM PROD :
    - `10-flows/prod`, `140-sql`, `100-scripts_mlops`, `110-api`, `120-webapp`
-4. Déploiement des namespace files SQL via `kestra-io/deploy-action`
-5. Validation des flows via `kestra-io/validate-action`
-6. Déploiement des flows via `kestra-io/deploy-action` (`delete: false`)
+4. Déploiement des namespace files SQL via `kestractl nsfiles upload`
+5. Validation des flows via `kestractl flows validate`
+6. Déploiement des flows via `kestractl flows deploy` (`--override`)
 7. Smoke tests (flows existent, namespace file présent, clés KV accessibles)
 8. Notification Discord (succès ou échec + rollback)
 

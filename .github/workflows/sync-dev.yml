@@ -90,43 +90,50 @@ jobs:
           echo ""
           echo "✅ DEV sync complete — $SYNCED directory(ies) synchronized."
 
+      # ─── Check kestractl availability ────────────────────────
+      - name: Verify kestractl is installed
+        run: |
+          command -v kestractl >/dev/null || { echo "❌ kestractl not found on this runner"; exit 1; }
+          echo "kestractl found at $(command -v kestractl)"
+
       # ─── Deploy namespace files (SQL) to Kestra DEV ────────────
-      # Non-destructive: only creates/updates files present in Git.
-      # Files already on Kestra DEV but absent from Git are left
-      # untouched.
+      # Non-destructive: creates/updates files present in Git via
+      # Kestra REST API. Files already on Kestra DEV but absent
+      # from Git are left untouched.
+      # Uses curl instead of kestractl nsfiles upload (CLI bug:
+      # "no value given for required property deleted").
       - name: Deploy namespace files (SQL) to Kestra DEV
-        uses: kestra-io/deploy-action@master
-        with:
-          namespace: ${{ env.KESTRA_NAMESPACE }}
-          directory: ./${{ env.SQL_DIR }}
-          resource: namespace_file
-          server: ${{ env.KESTRA_DEV_SERVER }}
-          user: ${{ secrets.KESTRA_ADMIN_USER }}
-          password: ${{ secrets.KESTRA_ADMIN_PASS }}
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+          KESTRA_SERVER: ${{ env.KESTRA_DEV_SERVER }}
+        run: bash 95-ci-cd/deploy/upload_namespace_sql.sh
 
       # ─── Validate flows against Kestra DEV ─────────────────────
       - name: Validate flows against Kestra DEV
-        uses: kestra-io/validate-action@master
-        with:
-          directory: ./${{ env.FLOWS_DIR }}
-          resource: flow
-          server: ${{ env.KESTRA_DEV_SERVER }}
-          user: ${{ secrets.KESTRA_ADMIN_USER }}
-          password: ${{ secrets.KESTRA_ADMIN_PASS }}
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+        run: |
+          kestractl flows validate "./$FLOWS_DIR/" \
+            --host "$KESTRA_DEV_SERVER" \
+            --username "$KESTRA_USER" \
+            --password "$KESTRA_PASS"
 
       # ─── Deploy flows to Kestra DEV ────────────────────────────
-      # Non-destructive: delete=false ensures flows present on
-      # Kestra DEV but absent from Git are NOT removed.
+      # Non-destructive: --override creates or updates existing flows.
+      # kestractl flows deploy has NO --delete flag — flows present
+      # on Kestra DEV but absent from Git are never removed.
       - name: Deploy flows to Kestra DEV
-        uses: kestra-io/deploy-action@master
-        with:
-          namespace: ${{ env.KESTRA_NAMESPACE }}
-          directory: ./${{ env.FLOWS_DIR }}
-          resource: flow
-          server: ${{ env.KESTRA_DEV_SERVER }}
-          user: ${{ secrets.KESTRA_ADMIN_USER }}
-          password: ${{ secrets.KESTRA_ADMIN_PASS }}
-          delete: false
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+        run: |
+          kestractl flows deploy "./$FLOWS_DIR/" \
+            --override \
+            --host "$KESTRA_DEV_SERVER" \
+            --username "$KESTRA_USER" \
+            --password "$KESTRA_PASS"
 
       # ─── Smoke tests: Kestra DEV ──────────────────────────────
       # Reuses the same script and config as PROD smoke tests.

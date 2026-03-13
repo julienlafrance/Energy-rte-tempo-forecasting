@@ -102,14 +102,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify kestractl is installed
+        run: |
+          command -v kestractl >/dev/null || { echo "❌ kestractl not found on this runner"; exit 1; }
+          echo "kestractl found at $(command -v kestractl)"
+
       - name: Validate flows against Kestra DEV
-        uses: kestra-io/validate-action@master
-        with:
-          directory: ./${{ env.FLOWS_DIR }}
-          resource: flow
-          server: ${{ env.KESTRA_DEV_SERVER }}
-          user: ${{ secrets.KESTRA_ADMIN_USER }}
-          password: ${{ secrets.KESTRA_ADMIN_PASS }}
+        env:
+          KESTRA_USER: ${{ secrets.KESTRA_ADMIN_USER }}
+          KESTRA_PASS: ${{ secrets.KESTRA_ADMIN_PASS }}
+        run: |
+          kestractl flows validate "./$FLOWS_DIR/" \
+            --host "$KESTRA_DEV_SERVER" \
+            --username "$KESTRA_USER" \
+            --password "$KESTRA_PASS"
 
       # Health checks on services already deployed in DEV via Docker Compose.
       # Configuration: 95-ci-cd/config/deploy_apps_smoke_tests.yaml (dev section)

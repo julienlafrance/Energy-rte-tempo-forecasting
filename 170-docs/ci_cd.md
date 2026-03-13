@@ -25,8 +25,12 @@ Namespace cible : **`projet713`**
 L'architecture CI/CD sépare clairement trois responsabilités :
 
 - **Validation** (`ci.yml`) : vérifications statiques + intégration DEV. Ne modifie aucun fichier sur les VMs.
-- **Synchronisation + Déploiement DEV** (`sync-dev.yml`) : copie non destructive des fichiers versionnés vers la VM DEV via `rsync` (sans `--delete`), puis déploiement des namespace files SQL et des flows dans Kestra DEV, suivi de smoke tests (Kestra + apps). Pas de rollback — DEV est l'environnement de prévalidation.
-- **Déploiement PROD** (`deploy.yml`) : synchronisation non destructive vers la VM PROD + déploiement Kestra via API + smoke tests + rollback en cas d'échec.
+- **Synchronisation + Déploiement DEV** (`sync-dev.yml`) : copie non destructive des fichiers versionnés vers la VM DEV via `rsync` (sans `--delete`), puis déploiement des namespace files SQL via l'API REST Kestra (`curl`) et des flows via `kestractl`, suivi de smoke tests (Kestra + apps). Pas de rollback — DEV est l'environnement de prévalidation.
+- **Déploiement PROD** (`deploy.yml`) : synchronisation non destructive vers la VM PROD + déploiement SQL via API REST Kestra + déploiement flows via `kestractl` + smoke tests + rollback en cas d'échec.
+
+> **`kestractl` vs actions conteneurisées.** Sur les runners self-hosted, nous utilisons la CLI `kestractl` installée directement sur les VMs (DEV et PROD) pour la validation et le déploiement des **flows**, et non les actions GitHub `kestra-io/*`. Raison : ces actions s'exécutent dans des conteneurs Docker où `localhost` désigne le conteneur, pas la VM — ce qui casse l'accès aux instances Kestra locales (`localhost:8082` en DEV, `localhost:30082` en PROD). L'approche CLI native est plus robuste et cohérente avec l'infrastructure réelle.
+
+> **`curl` pour les namespace files SQL.** Le déploiement des fichiers SQL utilise `curl` directement contre l'API REST Kestra (endpoint `POST /api/v1/main/namespaces/{ns}/files?path={rel_path}`, multipart form-data), et non `kestractl nsfiles upload`. Raison : la sous-commande `nsfiles upload` de `kestractl` est actuellement cassée (erreur « no value given for required property deleted »). Le script `95-ci-cd/deploy/upload_namespace_sql.sh` encapsule cette logique — c'est la même approche que celle utilisée dans le rollback (`rollback_prod.sh`).
 
 > **Pas de staging / préprod séparé.** La VM DEV est l'environnement complet de prévalidation. La VM PROD est réservée au déploiement réel uniquement. Le workflow de pré-déploiement sur PROD (namespace isolé `projet713-predeploy`) a été supprimé volontairement car l'isolation filesystem n'était pas réelle — les scripts et SQL montés restaient partagés avec la production.
 
@@ -74,7 +78,7 @@ Toutes les vérifications qui ne nécessitent aucun serveur :
 
 S'exécute **après** `lint-and-test`. Vérifie les composants contre les services actifs sur la VM DEV (705) :
 
-1. **Validate flows Kestra** — `kestra-io/validate-action` contre `http://localhost:8082`
+1. **Validate flows Kestra** — `kestractl flows validate` contre `http://localhost:8082`
 2. **Smoke test apps DEV** — `smoke_test_apps.py --env dev` vérifie :
    - API `http://localhost:8000/health` (Docker Compose)
    - Webapp `http://localhost:8501/_stcore/health` (Docker Compose)
@@ -106,9 +110,9 @@ Runner `[self-hosted, dev]` sur la VM DEV (705). Kestra DEV est accessible en `h
    - `100-scripts_mlops/` — scripts métier
    - `110-api/` — source API FastAPI
    - `120-webapp/` — source Webapp Streamlit
-4. **Deploy SQL** — namespace files déployés dans Kestra DEV via `kestra-io/deploy-action` (`resource: namespace_file`)
-5. **Validate flows** — validation des flows contre Kestra DEV via `kestra-io/validate-action`
-6. **Deploy flows** — déploiement des flows dans Kestra DEV via `kestra-io/deploy-action` (`delete: false`)
+4. **Deploy SQL** — namespace files déployés dans Kestra DEV via `curl` + API REST (`upload_namespace_sql.sh`)
+5. **Validate flows** — validation des flows contre Kestra DEV via `kestractl flows validate`
+6. **Deploy flows** — déploiement des flows dans Kestra DEV via `kestractl flows deploy` (`--override`).
 7. **Smoke tests Kestra DEV** — exécute `smoke_test_prod.py` avec `KESTRA_SERVER=http://localhost:8082` :
    - flows attendus existent via API
    - namespace files SQL versionnés existent
@@ -123,7 +127,7 @@ Le SQL (namespace files) doit être déployé **avant** les flows, car certains 
 
 ### Garanties
 
-- **Non destructif** : `rsync` sans `--delete` + `delete: false` pour les flows — les fichiers et flows ajoutés manuellement sur la VM DEV ne sont jamais supprimés
+- **Non destructif** : `rsync` sans `--delete` + `kestractl flows deploy --override` (crée/met à jour, jamais de suppression) — les fichiers et flows ajoutés manuellement sur la VM DEV ne sont jamais supprimés
 - **Pas de rollback** : DEV est un environnement d'expérimentation. En cas d'échec, le workflow échoue visiblement mais l'état est conservé pour investigation
 - **Condition** : en mode automatique, le sync ne s'exécute que si la CI a réussi (`workflow_run.conclusion == 'success'`)
 - **Version exacte** : le checkout utilise `head_sha` pour garantir la correspondance entre la version validée par la CI et la version déployée
@@ -163,9 +167,9 @@ Tout se déroule dans un seul job. Si **n'importe quelle** étape échoue (sync,
    - `100-scripts_mlops/` — scripts métier
    - `110-api/` — source API FastAPI
    - `120-webapp/` — source Webapp Streamlit
-4. **Deploy SQL** — namespace files via `kestra-io/deploy-action`
-5. **Validate flows** — via `kestra-io/validate-action`
-6. **Deploy flows** — via `kestra-io/deploy-action` (`delete: false`)
+4. **Deploy SQL** — namespace files via `curl` + API REST (`upload_namespace_sql.sh`)
+5. **Validate flows** — via `kestractl flows validate`
+6. **Deploy flows** — via `kestractl flows deploy` (`--override`)
 7. **Smoke tests Kestra** — exécute `smoke_test_prod.py` qui lit la configuration depuis `deploy_smoke_tests.yaml` et vérifie :
    - les flows attendus existent via API
    - tous les namespace files SQL versionnés dans Git existent
@@ -190,8 +194,8 @@ La liste des répertoires synchronisés (`sync.directories` dans `repo_structure
 Le pipeline CD est conçu pour être **conservatif** :
 
 - **Sync filesystem** : `rsync` sans `--delete` — les fichiers présents sur la VM PROD mais absents du repo Git ne sont **pas supprimés**. Seuls les fichiers versionnés sont créés ou mis à jour.
-- **Flows** : `delete: false` garantit que les flows déjà présents sur Kestra mais absents du repo Git ne sont **pas supprimés**. Seuls les flows versionnés dans Git sont créés ou mis à jour.
-- **Namespace files (SQL)** : `kestra-io/deploy-action` avec `resource: namespace_file` crée ou met à jour les fichiers présents dans Git. Les namespace files déjà sur Kestra mais absents du dépôt ne sont **pas affectés**.
+- **Flows** : `kestractl flows deploy --override` crée ou met à jour les flows présents dans Git. La CLI n'a pas de flag `--delete` — les flows déjà présents sur Kestra mais absents du repo Git ne sont **pas supprimés**.
+- **Namespace files (SQL)** : `upload_namespace_sql.sh` utilise `curl` pour créer ou mettre à jour les fichiers SQL via l'API REST Kestra (endpoint `POST /api/v1/main/namespaces/{ns}/files?path={rel_path}`). Les namespace files déjà sur Kestra mais absents du dépôt ne sont **pas affectés**.
 - **Rollback** : en cas d'échec, le script `rollback_prod.sh` utilise `git ls-tree` + `git show` pour énumérer et restaurer **tous** les fichiers qui existaient à `HEAD~1`, y compris les fichiers **supprimés** entre les deux commits. Les ressources Kestra (flows + SQL) sont re-déployées via API, les scripts sont restaurés sur disque, puis le tout est re-synchronisé vers `~/projet/`. Le rollback ne supprime rien.
 
 > **Principe** : Git est la source de vérité pour les ressources qu'il gère, mais le déploiement ne touche jamais aux ressources non gérées par Git.
@@ -216,8 +220,8 @@ Le pipeline CD est conçu pour être **conservatif** :
 
 | Type | Répertoire | Déployé via | Sync VM | Rollback |
 |------|-----------|-------------|---------|----------|
-| **Flows Kestra** | `10-flows/prod/` | `kestra-io/deploy-action` (API) | rsync → `~/projet/` | `git ls-tree` + API PUT par flow |
-| **Namespace files SQL** | `140-sql/queries/` | `kestra-io/deploy-action` (API) | rsync → `~/projet/` | `git ls-tree` + API POST par fichier |
+| **Flows Kestra** | `10-flows/prod/` | `kestractl flows deploy` | rsync → `~/projet/` | `git ls-tree` + API PUT par flow |
+| **Namespace files SQL** | `140-sql/queries/` | `kestractl nsfiles upload` | rsync → `~/projet/` | `git ls-tree` + API POST par fichier |
 | **Flow scripts Python** | `100-scripts_mlops/` | rsync vers VM | rsync → `~/projet/` | `git ls-tree` + `git show HEAD~1` |
 | **API source** | `110-api/` | rsync vers VM | rsync → `~/projet/` | rsync rollback |
 | **Webapp source** | `120-webapp/` | rsync vers VM | rsync → `~/projet/` | rsync rollback |

@@ -286,19 +286,48 @@ class TestSyncDevWorkflowSync:
         assert "rollback" not in wf["jobs"], "sync-dev.yml must NOT have a rollback job"
 
     def test_flows_deploy_non_destructive(self):
-        """Verify flows are deployed with delete: false."""
+        """Verify flows are deployed via kestractl with --override (no delete)."""
         wf = _load_workflow("sync-dev.yml")
         job = wf["jobs"]["sync-and-deploy"]
         deploy_steps = [
             s for s in job["steps"]
-            if s.get("uses", "").startswith("kestra-io/deploy-action")
-            and s.get("with", {}).get("resource") == "flow"
+            if "kestractl flows deploy" in s.get("run", "")
         ]
-        assert deploy_steps, "Must have a deploy-action step for flows"
+        assert deploy_steps, "Must have a kestractl flows deploy step"
         for step in deploy_steps:
-            assert step["with"].get("delete") is False, (
-                "deploy-action for flows must use delete: false"
+            assert "--override" in step["run"], (
+                "kestractl flows deploy must use --override"
             )
+
+    def test_no_kestra_io_actions(self):
+        """Self-hosted workflows must NOT use kestra-io/* container actions."""
+        for wf_name in ("sync-dev.yml", "deploy.yml"):
+            wf = _load_workflow(wf_name)
+            for job_name, job in wf.get("jobs", {}).items():
+                for step in job.get("steps", []):
+                    uses = step.get("uses", "")
+                    assert not uses.startswith("kestra-io/"), (
+                        f"{wf_name} job '{job_name}' step '{step.get('name', '?')}' "
+                        f"still uses {uses} — must use kestractl CLI instead"
+                    )
+
+    def test_sql_deploy_uses_curl_script(self):
+        """SQL namespace files must be deployed via upload_namespace_sql.sh, not kestractl nsfiles."""
+        for wf_name in ("sync-dev.yml", "deploy.yml"):
+            wf = _load_workflow(wf_name)
+            for job_name, job in wf.get("jobs", {}).items():
+                for step in job.get("steps", []):
+                    run_cmd = step.get("run", "")
+                    assert "kestractl nsfiles" not in run_cmd, (
+                        f"{wf_name} job '{job_name}' step '{step.get('name', '?')}' "
+                        f"still uses kestractl nsfiles — must use upload_namespace_sql.sh"
+                    )
+                    if "namespace files" in step.get("name", "").lower() or \
+                       "sql" in step.get("name", "").lower():
+                        assert "upload_namespace_sql.sh" in run_cmd, (
+                            f"{wf_name} step '{step.get('name', '?')}' should use "
+                            f"upload_namespace_sql.sh"
+                        )
 
 
 # ── Config files validity ────────────────────────────────────────────────────
