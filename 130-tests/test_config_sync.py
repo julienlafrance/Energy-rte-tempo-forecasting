@@ -146,15 +146,12 @@ class TestCIWorkflowSync:
         # FLOW_SCRIPTS_DIR no longer exists — scripts are at root of SCRIPTS_DIR
         assert "FLOW_SCRIPTS_DIR" not in wf["env"]
 
-    def test_api_build_ctx(self):
-        cfg = lc.load_repo_structure()
+    def test_no_infra_env_vars(self):
+        """Docker builds and Helm lint are infra team responsibility, not CI."""
         wf = _load_workflow("ci.yml")
-        assert wf["env"]["API_BUILD_CTX"] == cfg["docker"]["api_build_context"]
-
-    def test_infra_charts_dir(self):
-        cfg = lc.load_repo_structure()
-        wf = _load_workflow("ci.yml")
-        assert wf["env"]["INFRA_CHARTS_DIR"] == cfg["infra"]["charts_dir"]
+        env = wf.get("env", {})
+        assert "API_BUILD_CTX" not in env, "API_BUILD_CTX should not be in ci.yml"
+        assert "INFRA_CHARTS_DIR" not in env, "INFRA_CHARTS_DIR should not be in ci.yml"
 
 
 # ── Workflow sync: deploy.yml ────────────────────────────────────────────────

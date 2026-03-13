@@ -34,7 +34,7 @@ L'architecture CI/CD sépare clairement trois responsabilités :
 
 Le pipeline CI/CD **déploie uniquement les flows Kestra, les namespace files SQL et les scripts Python**. Les services applicatifs (API FastAPI, Webapp Streamlit) et l'infrastructure Kubernetes sont gérés indépendamment par l'équipe infrastructure.
 
-Le pipeline **valide** les artefacts d'infrastructure (Dockerfiles, Helm charts) en CI pour détecter les régressions, mais **ne build, ne push et ne déploie aucune image Docker ni chart Helm**.
+Le pipeline **ne build, ne push et ne déploie aucune image Docker ni chart Helm**. La validation des Dockerfiles et des Helm charts est de la responsabilité de l'équipe infrastructure.
 
 ---
 
@@ -68,13 +68,7 @@ Toutes les vérifications qui ne nécessitent aucun serveur :
    - `test_config_sync.py` — validité de `repo_structure.yaml`, synchronisation workflows / config
    - `test_smoke_apps.py` — tests unitaires du script de smoke test apps (mocks HTTP)
 
-#### Artefacts d'infrastructure (build-only)
-
-8. **Docker build — API** — `docker build 50-docker/api/build/` (validation Dockerfile + dépendances, aucun push)
-9. **Docker build — Webapp** — `docker build 120-webapp/` (validation Dockerfile + dépendances, aucun push)
-10. **Helm lint** — `helm lint` sur chaque chart dans `75-infra-prod/*/` (via `azure/setup-helm@v4`)
-
-> **Pourquoi ces Dockerfiles ?** `110-api/` ne contient pas de Dockerfile — le Dockerfile API canonique est dans `50-docker/api/build/`. Pour la webapp, `120-webapp/` est la source de vérité (build context autonome avec Dockerfile + code source). Le répertoire `50-docker/webapp/build/` est un doublon.
+> **Note** : la validation des Dockerfiles (`docker build`) et des Helm charts (`helm lint`) n'est pas incluse dans la CI. Ces artefacts d'infrastructure sont gérés et validés par l'équipe infrastructure.
 
 ### Job 2 : `validate-dev` — Intégration DEV (`[self-hosted, dev]`)
 
@@ -230,13 +224,7 @@ Le pipeline CD est conçu pour être **conservatif** :
 
 ### Validés en CI uniquement (non déployés)
 
-| Type | Emplacement canonique | Validation CI |
-|------|----------------------|---------------|
-| **Dockerfile API** | `50-docker/api/build/` | `docker build` (build-only) |
-| **Dockerfile Webapp** | `120-webapp/` | `docker build` (build-only) |
-| **Helm chart API** | `75-infra-prod/energy-api/` | `helm lint` |
-| **Helm chart Webapp** | `75-infra-prod/energy-webapi/` | `helm lint` |
-| **Helm chart Kestra** | `75-infra-prod/kestra/` | `helm lint` |
+> Les Dockerfiles et Helm charts ne sont plus validés par la CI. Leur validation est de la responsabilité de l'équipe infrastructure.
 
 Les outils CI/CD (`ci/`, `deploy/`, `config/`) sont regroupés dans `95-ci-cd/`, séparés des scripts métier qui résident directement dans `100-scripts_mlops/`. Cette séparation physique élimine tout besoin d'exclusion dans les étapes de validation ou de rollback.
 

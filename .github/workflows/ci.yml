@@ -14,13 +14,11 @@ env:
   API_DIR: 110-api
   WEBAPP_DIR: 120-webapp
   KESTRA_DEV_SERVER: http://localhost:8082
-  API_BUILD_CTX: 50-docker/api/build
-  INFRA_CHARTS_DIR: 75-infra-prod
 
 jobs:
   # ─── Job 1 : Static validation (no server dependency) ─────────────
-  # Runs on GitHub-hosted runner. Validates code, config, Docker
-  # builds and Helm charts without requiring any live service.
+  # Runs on GitHub-hosted runner. Validates code and config
+  # without requiring any live service.
   lint-and-test:
     name: Static validation
     runs-on: ubuntu-latest
@@ -91,31 +89,6 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest 130-tests/ -v
-
-      # ── Infrastructure artifact validation ───────────────────────
-      # Build-only — no image is pushed. Validates Dockerfiles and
-      # dependency installation.
-      - name: Build API image (validation only)
-        run: docker build -t energy-api:ci-test "$API_BUILD_CTX"
-
-      - name: Build webapp image (validation only)
-        run: docker build -t energy-webapp:ci-test "$WEBAPP_DIR"
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-
-      - name: Lint Helm charts
-        run: |
-          echo "Linting Helm charts in $INFRA_CHARTS_DIR/ ..."
-          FOUND=0
-          for chart in $INFRA_CHARTS_DIR/*/; do
-            if [ -f "$chart/Chart.yaml" ]; then
-              helm lint "$chart"
-              echo "  ✓ $chart"
-              FOUND=$((FOUND + 1))
-            fi
-          done
-          echo "$FOUND chart(s) validated."
 
   # ─── Job 2 : DEV integration validation (self-hosted DEV runner) ──
   # Validates components against services already running on the
