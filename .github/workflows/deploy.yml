@@ -53,6 +53,12 @@ jobs:
           echo "Server:    $KESTRA_SERVER"
           echo "──────────────────────────────────────"
 
+      # ─── Check rsync availability ──────────────────────────────
+      - name: Verify rsync is installed
+        run: |
+          command -v rsync >/dev/null || { echo "❌ rsync not found on this runner"; exit 1; }
+          echo "rsync found at $(command -v rsync)"
+
       # ─── Filesystem sync (non-destructive) ────────────────────────
       # rsync WITHOUT --delete: updates existing files and adds
       # missing ones, but never removes files already on the VM.
