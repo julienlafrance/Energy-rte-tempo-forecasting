@@ -221,7 +221,7 @@ Le pipeline CD est conçu pour être **conservatif** :
 | Type | Répertoire | Déployé via | Sync VM | Rollback |
 |------|-----------|-------------|---------|----------|
 | **Flows Kestra** | `10-flows/prod/` | `kestractl flows deploy` | rsync → `~/projet/` | `git ls-tree` + API PUT par flow |
-| **Namespace files SQL** | `140-sql/queries/` | `kestractl nsfiles upload` | rsync → `~/projet/` | `git ls-tree` + API POST par fichier |
+| **Namespace files SQL** | `140-sql/queries/` | `curl` + API REST Kestra (`upload_namespace_sql.sh`) | rsync → `~/projet/` | `git ls-tree` + API POST par fichier |
 | **Flow scripts Python** | `100-scripts_mlops/` | rsync vers VM | rsync → `~/projet/` | `git ls-tree` + `git show HEAD~1` |
 | **API source** | `110-api/` | rsync vers VM | rsync → `~/projet/` | rsync rollback |
 | **Webapp source** | `120-webapp/` | rsync vers VM | rsync → `~/projet/` | rsync rollback |

@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 560" font-family="system-ui,-apple-system,sans-serif" font-size="12">
+  <style>
+    .tb { font-size: 13px; font-weight: 600; fill: #1a1a1a; }
+    .t { font-size: 11px; fill: #333; }
+    .ts { font-size: 10px; fill: #666; }
+    .env { font-size: 11px; font-weight: 600; fill: #fff; }
+    .k3s { font-size: 10px; font-weight: 500; fill: #185FA5; }
+    .a { stroke: #aaa; stroke-width: 0.7; fill: none; marker-end: url(#h); }
+    .ag { stroke: #0F6E56; stroke-width: 0.9; fill: none; marker-end: url(#hg); }
+    .ab { stroke: #378ADD; stroke-width: 0.7; fill: none; marker-end: url(#hb); }
+    .ad { stroke: #aaa; stroke-width: 0.7; fill: none; stroke-dasharray: 4 2; marker-end: url(#h); }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#aaa" stroke-width="1.5"/></marker>
+    <marker id="hg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#0F6E56" stroke-width="1.5"/></marker>
+    <marker id="hb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#378ADD" stroke-width="1.5"/></marker>
+  </defs>
+
+  <!-- ======== ROW 1: External services ======== -->
+
+  <rect x="10" y="10" width="95" height="42" rx="5" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text class="tb" x="57" y="28" text-anchor="middle">Linky</text>
+  <text class="ts" x="57" y="42" text-anchor="middle">ZLinky + HA</text>
+
+  <line x1="105" y1="31" x2="125" y2="31" class="ag"/>
+
+  <rect x="128" y="10" width="110" height="42" rx="5" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text class="tb" x="183" y="28" text-anchor="middle">Mosquitto</text>
+  <text class="ts" x="183" y="42" text-anchor="middle">:1884 (host)</text>
+
+  <rect x="530" y="10" width="100" height="42" rx="5" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+  <text class="tb" x="580" y="28" text-anchor="middle">S3 Garage</text>
+  <text class="ts" x="580" y="42" text-anchor="middle">Model store</text>
+
+  <rect x="645" y="10" width="100" height="42" rx="5" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text class="tb" x="695" y="28" text-anchor="middle">MLflow</text>
+  <text class="ts" x="695" y="42" text-anchor="middle">Registry</text>
+
+  <rect x="760" y="10" width="80" height="42" rx="5" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text class="tb" x="800" y="28" text-anchor="middle">Discord</text>
+  <text class="ts" x="800" y="42" text-anchor="middle">Notifs</text>
+
+  <!-- MQTT from Mosquitto down to both Incus -->
+  <path d="M183 52 L183 68 L150 68 L150 90" fill="none" class="ag"/>
+  <path d="M183 52 L183 68 L510 68 L510 90" fill="none" class="ag"/>
+  <text class="ts" x="165" y="81" fill="#0F6E56">MQTT</text>
+  <text class="ts" x="490" y="81" fill="#0F6E56" text-anchor="end">MQTT</text>
+
+  <!-- ======== ROW 2: Incus DEV ======== -->
+  <rect x="10" y="92" width="330" height="290" rx="8" fill="none" stroke="#534AB7" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <rect x="10" y="92" width="330" height="20" rx="8" fill="#534AB7"/>
+  <rect x="10" y="104" width="330" height="8" fill="#534AB7"/>
+  <text class="env" x="175" y="106" text-anchor="middle">Incus DEV — Docker Compose</text>
+
+  <!-- Docker net label -->
+  <rect x="24" y="118" width="302" height="188" rx="5" fill="none" stroke="#534AB7" stroke-width="0.4" stroke-dasharray="3 2"/>
+  <text class="ts" x="34" y="130" fill="#534AB7">projet-net</text>
+
+  <!-- Kestra DEV -->
+  <rect x="34" y="138" width="130" height="36" rx="5" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.4"/>
+  <text class="tb" x="99" y="154" text-anchor="middle">Kestra</text>
+  <text class="ts" x="99" y="167" text-anchor="middle">:8082</text>
+
+  <!-- PostgreSQL DEV -->
+  <rect x="186" y="138" width="130" height="36" rx="5" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.4"/>
+  <text class="tb" x="251" y="154" text-anchor="middle">PostgreSQL</text>
+  <text class="ts" x="251" y="167" text-anchor="middle">TimescaleDB :5432</text>
+
+  <line x1="164" y1="156" x2="184" y2="156" class="ab"/>
+
+  <!-- FastAPI DEV -->
+  <rect x="34" y="190" width="130" height="36" rx="5" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.4"/>
+  <text class="tb" x="99" y="206" text-anchor="middle">FastAPI</text>
+  <text class="ts" x="99" y="219" text-anchor="middle">:8000</text>
+
+  <!-- Streamlit DEV -->
+  <rect x="186" y="190" width="130" height="36" rx="5" fill="#FBEAF0" stroke="#993556" stroke-width="0.4"/>
+  <text class="tb" x="251" y="206" text-anchor="middle">Streamlit</text>
+  <text class="ts" x="251" y="219" text-anchor="middle">:8501</text>
+
+  <line x1="99" y1="174" x2="99" y2="188" class="ab"/>
+  <line x1="164" y1="208" x2="184" y2="208" class="a"/>
+
+  <!-- Elasticsearch DEV -->
+  <rect x="34" y="242" width="130" height="36" rx="5" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.4"/>
+  <text class="tb" x="99" y="258" text-anchor="middle">Elasticsearch</text>
+  <text class="ts" x="99" y="271" text-anchor="middle">:9200</text>
+
+  <!-- Kibana DEV -->
+  <rect x="186" y="242" width="130" height="36" rx="5" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.4"/>
+  <text class="tb" x="251" y="258" text-anchor="middle">Kibana</text>
+  <text class="ts" x="251" y="271" text-anchor="middle">:5601</text>
+
+  <line x1="99" y1="226" x2="99" y2="240" class="a"/>
+  <line x1="164" y1="260" x2="184" y2="260" class="a"/>
+
+  <!-- ES/Kibana DEV-only note -->
+  <rect x="24" y="316" width="302" height="28" rx="4" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.3"/>
+  <text class="ts" x="175" y="330" text-anchor="middle" fill="#A32D2D">ES + Kibana DEV uniquement (non migre par manque de temps)</text>
+  <text class="ts" x="175" y="342" text-anchor="middle" fill="#A32D2D"></text>
+
+  <!-- Kestra DEV → shared services (dashed) -->
+  <path d="M99 138 L99 125 L440 68 L530 52" fill="none" class="ad"/>
+  <path d="M130 138 L130 120 L500 68 L645 52" fill="none" class="ad"/>
+
+  <!-- ======== ROW 2: Incus PROD ======== -->
+  <rect x="370" y="92" width="500" height="290" rx="8" fill="none" stroke="#185FA5" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <rect x="370" y="92" width="500" height="20" rx="8" fill="#185FA5"/>
+  <rect x="370" y="104" width="500" height="8" fill="#185FA5"/>
+  <text class="env" x="620" y="106" text-anchor="middle">Incus PROD</text>
+
+  <!-- K3s cluster -->
+  <rect x="384" y="118" width="472" height="104" rx="6" fill="none" stroke="#185FA5" stroke-width="0.6" stroke-dasharray="3 2"/>
+  <text class="k3s" x="394" y="132">Cluster K3s</text>
+
+  <!-- Kestra Pod PROD -->
+  <rect x="394" y="140" width="140" height="40" rx="5" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.4"/>
+  <text class="tb" x="464" y="156" text-anchor="middle">Kestra</text>
+  <text class="ts" x="464" y="170" text-anchor="middle">NP :30082 · Helm</text>
+
+  <!-- FastAPI Pod PROD -->
+  <rect x="554" y="140" width="140" height="40" rx="5" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.4"/>
+  <text class="tb" x="624" y="156" text-anchor="middle">FastAPI</text>
+  <text class="ts" x="624" y="170" text-anchor="middle">NP :30088 · Helm</text>
+
+  <!-- Streamlit Pod PROD -->
+  <rect x="714" y="140" width="130" height="40" rx="5" fill="#FBEAF0" stroke="#993556" stroke-width="0.4"/>
+  <text class="tb" x="779" y="156" text-anchor="middle">Streamlit</text>
+  <text class="ts" x="779" y="170" text-anchor="middle">NP :30085 · Helm</text>
+
+  <line x1="534" y1="160" x2="552" y2="160" class="ab"/>
+  <line x1="694" y1="160" x2="712" y2="160" class="a"/>
+
+  <!-- PostgreSQL PROD (outside K3s, inside Incus) -->
+  <rect x="384" y="238" width="260" height="40" rx="5" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text class="tb" x="514" y="254" text-anchor="middle">PostgreSQL / TimescaleDB</text>
+  <text class="ts" x="514" y="268" text-anchor="middle">:5432 — hors K3s (gestion propre HA/replication)</text>
+
+  <!-- K3s pods → PG -->
+  <line x1="464" y1="180" x2="464" y2="236" class="ab"/>
+  <line x1="624" y1="180" x2="560" y2="236" class="ab"/>
+
+  <!-- Kestra PROD → shared services (dashed) -->
+  <path d="M464 140 L464 125 L550 68 L580 52" fill="none" class="ad"/>
+  <path d="M500 140 L500 120 L620 68 L695 52" fill="none" class="ad"/>
+
+  <!-- Why PG outside K3s note -->
+  <rect x="660" y="238" width="196" height="40" rx="4" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.3"/>
+  <text class="ts" x="758" y="252" text-anchor="middle" fill="#185FA5">PostgreSQL hors K3s :</text>
+  <text class="ts" x="758" y="264" text-anchor="middle" fill="#185FA5">HA et replication propres</text>
+
+  <!-- ======== ROW 3: GitHub Actions (below both Incus) ======== -->
+  <rect x="200" y="420" width="460" height="36" rx="6" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.6"/>
+  <text class="tb" x="430" y="442" text-anchor="middle">GitHub Actions CI/CD</text>
+
+  <!-- GHA → Incus DEV runner -->
+  <rect x="50" y="470" width="200" height="26" rx="5" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.3" stroke-dasharray="3 2"/>
+  <text class="ts" x="150" y="487" text-anchor="middle" fill="#534AB7">runner [self-hosted, dev]</text>
+
+  <!-- GHA → Incus PROD runner -->
+  <rect x="610" y="470" width="200" height="26" rx="5" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.3" stroke-dasharray="3 2"/>
+  <text class="ts" x="710" y="487" text-anchor="middle" fill="#185FA5">runner [self-hosted, prod]</text>
+
+  <!-- Arrows GHA → runners → Incus -->
+  <path d="M330 438 L150 438 L150 468" fill="none" class="ad"/>
+  <path d="M530 438 L710 438 L710 468" fill="none" class="ad"/>
+  <path d="M150 470 L150 395 L175 384" fill="none" class="ad"/>
+  <path d="M710 470 L710 395 L620 384" fill="none" class="ad"/>
+
+  <!-- ======== Legend ======== -->
+  <text class="ts" x="200" y="530" fill="#666">Legende :</text>
+  <line x1="256" y1="527" x2="280" y2="527" stroke="#0F6E56" stroke-width="0.9"/>
+  <text class="ts" x="285" y="530">MQTT</text>
+  <line x1="320" y1="527" x2="344" y2="527" stroke="#378ADD" stroke-width="0.7"/>
+  <text class="ts" x="349" y="530">Donnees SQL</text>
+  <line x1="415" y1="527" x2="439" y2="527" stroke="#aaa" stroke-width="0.7" stroke-dasharray="3 2"/>
+  <text class="ts" x="444" y="530">CI/CD + services partages</text>
+</svg>

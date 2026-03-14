@@ -1,56 +1,48 @@
 # Energy Monitoring — Streamlit WebApp
 
-Interface web pour la plateforme de monitoring energetique. Se connecte a l'API FastAPI (`110-api`).
-
-## Setup
-
-```bash
-cd 120-webapp/webapp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Interface web pour la plateforme de monitoring énergétique. Se connecte à l'API FastAPI (`110-api`).
 
 ## Configuration
 
-L'URL de l'API est configurable via la variable d'environnement `API_URL` (defaut : `http://localhost:8000`).
+L'URL de l'API est configurable via la variable d'environnement `API_URL` (défaut : `http://localhost:8000`).
 
 ```bash
-# Exemple
 export API_URL=http://localhost:8000
 ```
 
-Un fichier `.env.example` est fourni comme reference.
+Un fichier `.env.example` est fourni comme référence.
 
-## Lancement
+## Lancement (dev local)
 
 ```bash
-source .venv/bin/activate
-streamlit run app.py
+cd 120-webapp
+pip install streamlit requests plotly
+API_URL=http://localhost:8000 streamlit run app.py
 ```
 
-Ou avec une URL API custom :
+## Docker
 
 ```bash
-API_URL=http://192.168.80.212:8000 streamlit run app.py
+docker build -t energy-webapp .
+docker run -e API_URL=http://energy-api:8000 -p 8501:8501 energy-webapp
 ```
 
 ## Pages
 
 | Page | Description |
 |------|-------------|
-| Consommation | Prevision de consommation Linky a 72h avec graphique et intervalle de confiance |
+| Consommation | Prévision de consommation Linky à 72h avec graphique Plotly et intervalle de confiance |
 
 ## Structure
 
 ```
-webapp/
-├── app.py              # Point d'entree Streamlit
+120-webapp/
+├── app.py              # Point d'entrée Streamlit
 ├── config.py           # Variable API_URL (env var)
 ├── api_client.py       # Client HTTP vers l'API FastAPI
-├── pages/
-│   └── consumption.py  # Page prevision consommation
-├── requirements.txt
-├── .env.example
-└── .venv/
+├── views/
+│   ├── __init__.py
+│   └── consumption.py  # Vue prévision consommation
+├── Dockerfile
+└── .env.example
 ```

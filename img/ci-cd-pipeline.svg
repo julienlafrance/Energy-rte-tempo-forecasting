@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 340" font-family="system-ui,-apple-system,sans-serif" font-size="12">
+  <style>
+    .title { font-size: 13px; font-weight: 600; fill: #1a1a1a; }
+    .label { font-size: 11px; fill: #333; }
+    .sublabel { font-size: 10px; fill: #666; }
+    .phase { font-size: 11px; font-weight: 600; }
+    .arr { stroke: #888; stroke-width: 1.2; fill: none; marker-end: url(#ah); }
+    .arr-ok { stroke: #1D9E75; stroke-width: 1.2; fill: none; marker-end: url(#ah-g); }
+    .arr-fail { stroke: #E24B4A; stroke-width: 1.2; fill: none; marker-end: url(#ah-r); stroke-dasharray: 4 2; }
+  </style>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#888" stroke-width="1.5"/></marker>
+    <marker id="ah-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#1D9E75" stroke-width="1.5"/></marker>
+    <marker id="ah-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L8 5L1 9" fill="none" stroke="#E24B4A" stroke-width="1.5"/></marker>
+  </defs>
+
+  <!-- Phase labels -->
+  <text class="phase" x="80" y="22" text-anchor="middle" fill="#534AB7">CI</text>
+  <text class="phase" x="355" y="22" text-anchor="middle" fill="#0F6E56">Deploy DEV</text>
+  <text class="phase" x="590" y="22" text-anchor="middle" fill="#854F0B">Promotion</text>
+  <text class="phase" x="830" y="22" text-anchor="middle" fill="#185FA5">Deploy PROD</text>
+
+  <!-- ===== CI COLUMN ===== -->
+  <!-- Feature branch -->
+  <rect x="20" y="40" width="120" height="40" rx="6" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.6"/>
+  <text class="title" x="80" y="58" text-anchor="middle">Feature branch</text>
+  <text class="sublabel" x="80" y="72" text-anchor="middle">git push</text>
+
+  <line x1="80" y1="80" x2="80" y2="96" class="arr"/>
+
+  <!-- PR to main -->
+  <rect x="20" y="98" width="120" height="36" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/>
+  <text class="title" x="80" y="120" text-anchor="middle">PR → main</text>
+
+  <line x1="80" y1="134" x2="80" y2="150" class="arr"/>
+
+  <!-- Static validation -->
+  <rect x="10" y="152" width="140" height="56" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/>
+  <text class="title" x="80" y="170" text-anchor="middle">Static validation</text>
+  <text class="sublabel" x="80" y="183" text-anchor="middle">yamllint, py_compile</text>
+  <text class="sublabel" x="80" y="195" text-anchor="middle">check_flows, pytest</text>
+
+  <line x1="80" y1="208" x2="80" y2="224" class="arr"/>
+
+  <!-- Validate DEV -->
+  <rect x="10" y="226" width="140" height="50" rx="6" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.6"/>
+  <text class="title" x="80" y="244" text-anchor="middle">Validate on DEV</text>
+  <text class="sublabel" x="80" y="257" text-anchor="middle">kestractl validate</text>
+  <text class="sublabel" x="80" y="269" text-anchor="middle">smoke tests apps</text>
+
+  <!-- Runner label CI -->
+  <text class="sublabel" x="80" y="296" text-anchor="middle" fill="#534AB7">ubuntu-latest + [self-hosted, dev]</text>
+
+  <!-- ===== DEPLOY DEV COLUMN ===== -->
+  <line x1="150" y1="250" x2="260" y2="90" class="arr-ok"/>
+  <text class="sublabel" x="205" y="155" text-anchor="middle" fill="#1D9E75" transform="rotate(-35 205 155)">CI OK</text>
+
+  <rect x="260" y="52" width="190" height="40" rx="6" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.6"/>
+  <text class="title" x="355" y="70" text-anchor="middle">rsync → Incus DEV</text>
+  <text class="sublabel" x="355" y="84" text-anchor="middle">non-destructif</text>
+
+  <line x1="355" y1="92" x2="355" y2="108" class="arr"/>
+
+  <rect x="260" y="110" width="190" height="40" rx="6" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.6"/>
+  <text class="title" x="355" y="128" text-anchor="middle">Deploy SQL + flows</text>
+  <text class="sublabel" x="355" y="142" text-anchor="middle">curl API + kestractl</text>
+
+  <line x1="355" y1="150" x2="355" y2="166" class="arr"/>
+
+  <rect x="260" y="168" width="190" height="40" rx="6" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.6"/>
+  <text class="title" x="355" y="186" text-anchor="middle">Smoke tests</text>
+  <text class="sublabel" x="355" y="200" text-anchor="middle">Kestra + API + Webapp</text>
+
+  <!-- No rollback label -->
+  <text class="sublabel" x="355" y="228" text-anchor="middle" fill="#666">Pas de rollback (env DEV)</text>
+
+  <!-- Runner label DEV -->
+  <text class="sublabel" x="355" y="296" text-anchor="middle" fill="#0F6E56">[self-hosted, dev]</text>
+
+  <!-- ===== PROMOTION COLUMN ===== -->
+  <line x1="450" y1="188" x2="510" y2="90" class="arr"/>
+
+  <rect x="510" y="52" width="160" height="40" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.6"/>
+  <text class="title" x="590" y="70" text-anchor="middle">PR main → prod</text>
+  <text class="sublabel" x="590" y="84" text-anchor="middle">protect-prod.yml</text>
+
+  <line x1="590" y1="92" x2="590" y2="108" class="arr"/>
+
+  <rect x="510" y="110" width="160" height="40" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.6"/>
+  <text class="title" x="590" y="128" text-anchor="middle">Approbation PR</text>
+  <text class="sublabel" x="590" y="142" text-anchor="middle">review obligatoire</text>
+
+  <line x1="590" y1="150" x2="590" y2="166" class="arr"/>
+
+  <rect x="510" y="168" width="160" height="36" rx="6" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.6"/>
+  <text class="title" x="590" y="190" text-anchor="middle">Merge → prod</text>
+
+  <!-- ===== DEPLOY PROD COLUMN ===== -->
+  <line x1="670" y1="186" x2="720" y2="70" class="arr-ok"/>
+
+  <rect x="720" y="40" width="220" height="40" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.6"/>
+  <text class="title" x="830" y="58" text-anchor="middle">rsync → Incus PROD</text>
+  <text class="sublabel" x="830" y="72" text-anchor="middle">non-destructif</text>
+
+  <line x1="830" y1="80" x2="830" y2="96" class="arr"/>
+
+  <rect x="720" y="98" width="220" height="40" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.6"/>
+  <text class="title" x="830" y="116" text-anchor="middle">Deploy SQL + flows</text>
+  <text class="sublabel" x="830" y="130" text-anchor="middle">curl API + kestractl</text>
+
+  <line x1="830" y1="138" x2="830" y2="154" class="arr"/>
+
+  <rect x="720" y="156" width="220" height="40" rx="6" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.6"/>
+  <text class="title" x="830" y="174" text-anchor="middle">Smoke tests</text>
+  <text class="sublabel" x="830" y="188" text-anchor="middle">Kestra + API + Webapp</text>
+
+  <!-- Success path -->
+  <line x1="830" y1="196" x2="830" y2="218" class="arr-ok"/>
+  <rect x="750" y="220" width="160" height="36" rx="6" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.8"/>
+  <text class="title" x="830" y="242" text-anchor="middle" fill="#0F6E56">Discord OK</text>
+
+  <!-- Failure path -->
+  <line x1="720" y1="176" x2="700" y2="176" fill="none" stroke="#E24B4A" stroke-width="1"/>
+  <path d="M700 176 L700 240 L750 240" class="arr-fail"/>
+  <rect x="750" y="268" width="160" height="50" rx="6" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.8"/>
+  <text class="title" x="830" y="288" text-anchor="middle" fill="#A32D2D">Rollback HEAD~1</text>
+  <text class="sublabel" x="830" y="302" text-anchor="middle" fill="#791F1F">git ls-tree + API Kestra</text>
+  <text class="sublabel" x="830" y="312" text-anchor="middle" fill="#791F1F">Discord erreur</text>
+
+  <text class="sublabel" x="700" y="210" fill="#E24B4A">echec</text>
+
+  <!-- Runner label PROD -->
+  <text class="sublabel" x="830" y="338" text-anchor="middle" fill="#185FA5">[self-hosted, prod]</text>
+</svg>

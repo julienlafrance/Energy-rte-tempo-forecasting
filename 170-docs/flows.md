@@ -27,11 +27,11 @@ Les identifiants PostgreSQL sont chargés depuis le KV store Kestra (`PG_JDBC`, 
 
 ### `mqtt_linky_silver`
 
-**Déclencheur :** MQTT temps réel — `linky/sensor/+/state`
+**Déclencheur :** Subflow — appelé par `mqtt_linky_ingest` avec les inputs `metric` et `payload`.
 
-Reprend la même structure que le flow d'ingestion. Insère les données nettoyées dans `raw.linky` (couche Silver) et distribue vers les mêmes sous-flows en aval.
+Ce flow n'a pas de trigger propre. Il reçoit le nom de la métrique et la valeur depuis le flow d'ingestion, puis appelle la procédure stockée `dbt_silver.upsert_linky_energy()` pour insérer ou mettre à jour les données dans la couche Silver.
 
-Les identifiants PostgreSQL sont chargés depuis le KV store Kestra.
+Les identifiants PostgreSQL sont chargés depuis le KV store Kestra (`PG_JDBC`, `PG_USER`, `PG_PASS`).
 
 ---
 
