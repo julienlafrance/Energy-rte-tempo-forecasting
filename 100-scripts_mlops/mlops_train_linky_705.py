@@ -235,7 +235,7 @@ def register_model_to_s3(model, model_order_str, train_date):
     }
 
     s3_client = boto3.client("s3", endpoint_url=MODEL_REGISTRY_S3_ENDPOINT_URL or None)
-    s3_client.upload_fileobj(model_buffer, MODEL_REGISTRY_S3_BUCKET, model_key)
+    s3_client.put_object(Bucket=MODEL_REGISTRY_S3_BUCKET, Key=model_key, Body=model_buffer.getvalue())
     s3_client.put_object(
         Bucket=MODEL_REGISTRY_S3_BUCKET,
         Key=metadata_key,
